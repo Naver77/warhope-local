@@ -12,7 +12,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 export async function POST(req) {
   try {
     const body = await req.json();
-    const { formData, items, total, shippingCost, adminFee } = body;
+    const { formData, items, shippingCost, adminFee } = body;
 
     const clientId = process.env.DOKU_CLIENT_ID;
     const secretKey = process.env.DOKU_SECRET_KEY;

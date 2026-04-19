@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Script from 'next/script';
 import { Truck, ShoppingBag, ShieldCheck, ArrowRight, Package } from 'lucide-react';
@@ -9,7 +8,6 @@ import { useCartStore } from '../../../store/cartStore';
 import { useToastStore } from '../../../store/toastStore';
 
 export default function CheckoutPage() {
-  const router = useRouter();
   const { items, getTotalPrice, clearCart } = useCartStore();
   const addToast = useToastStore((state) => state.addToast);
   
