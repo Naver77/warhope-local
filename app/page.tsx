@@ -44,7 +44,7 @@ export default async function Home() {
         <div className="md:col-span-2 relative bg-slate-200 dark:bg-slate-800 rounded-4xl overflow-hidden min-h-100 md:min-h-125 group">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img 
-            src="https://images.unsplash.com/photo-1483985988355-763728e1935b?q=80&w=1200&auto=format&fit=crop" 
+            src="https://plus.unsplash.com/premium_photo-1687294575653-288f6105c4a2?q=80&w=1200&auto=format&fit=crop" 
             alt="Fashion Lifestyle" 
             className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000"
           />

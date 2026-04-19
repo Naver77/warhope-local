@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
+import ToastProvider from "../components/ToastProvider"; // IMPORT TOAST PROVIDER
 
 // Menggunakan Inter sesuai konsep PDF
 const inter = Inter({ subsets: ["latin"] });
@@ -18,12 +19,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="id" suppressHydrationWarning> 
+    <html lang="id" suppressHydrationWarning className="scroll-smooth"> 
       <body 
         suppressHydrationWarning 
-        // Hapus bg-[#f5f6f7] hardcode di sini agar globals.css bisa bekerja
-        // Tambahkan antialiased agar font lebih tajam
-        className={`${inter.className} antialiased selection:bg-blue-600 selection:text-white`}
+        // Ditambahkan bg-background dan text-foreground agar tema (Light/Dark) dari globals.css merata ke seluruh aplikasi
+        className={`${inter.className} bg-background text-foreground antialiased selection:bg-blue-600 selection:text-white`}
       >
         <Navbar /> 
         
@@ -33,6 +33,9 @@ export default function RootLayout({
         </main>
 
         <Footer />
+
+        {/* Letakkan ToastProvider di paling bawah body agar bisa menimpa (z-index) elemen lain */}
+        <ToastProvider />
       </body>
     </html>
   );
