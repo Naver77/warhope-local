@@ -9,19 +9,24 @@ import { useToastStore } from '../../../store/toastStore';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, user, checkAuth } = useAuthStore();
+  // PERBAIKAN 1: Tambahkan isInitialized dari authStore
+  const { login, user, checkAuth, isInitialized } = useAuthStore();
   const addToast = useToastStore((state) => state.addToast);
 
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Jika sudah login, tendang dari halaman login
+  // PERBAIKAN 2: Pisahkan useEffect untuk checkAuth (Hanya jalan sekali saat dimuat)
   useEffect(() => {
     checkAuth();
-    if (user) {
+  }, [checkAuth]);
+
+  // PERBAIKAN 3: useEffect terpisah untuk redirect jika user sudah login
+  useEffect(() => {
+    if (isInitialized && user) {
       router.push(user.role === 'admin' ? '/admin' : '/');
     }
-  }, [user, checkAuth, router]);
+  }, [user, isInitialized, router]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
