@@ -1,10 +1,9 @@
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { NextResponse } from 'next/server';
-// Tambahkan import Supabase Client!
 import { createClient } from '@supabase/supabase-js';
 
-// Inisialisasi Supabase khusus untuk fungsi Back-end ini
+// Inisialisasi Supabase khusus untuk Back-end
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -12,6 +11,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 export async function POST(req) {
   try {
     const body = await req.json();
+    // PERBAIKAN: Menghapus variabel 'total' yang tidak dipakai
     const { formData, items, shippingCost, adminFee } = body;
 
     const clientId = process.env.DOKU_CLIENT_ID;
@@ -26,8 +26,6 @@ export async function POST(req) {
 
     const requestId = uuidv4(); 
     const timestamp = new Date().toISOString().slice(0, 19) + "Z"; 
-    
-    // INVOICE NUMBER SANGAT PENTING. Ini akan jadi "Jembatan" antara Supabase & DOKU
     const invoiceNumber = `INVWH${Date.now()}`; 
     const originUrl = req.headers.get('origin') || 'http://localhost:3000';
 
@@ -54,6 +52,7 @@ export async function POST(req) {
       });
     }
 
+    // Hitung total manual dari line items agar presisi dengan standar DOKU
     const calculatedTotal = lineItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
 
     const requestBody = {
@@ -61,7 +60,7 @@ export async function POST(req) {
         amount: calculatedTotal, 
         invoice_number: invoiceNumber,
         currency: "IDR",
-        callback_url: `${originUrl}/`, 
+        callback_url: `${originUrl}/success`,
         auto_redirect: true,
         line_items: lineItems
       },
@@ -86,6 +85,7 @@ export async function POST(req) {
     const hmacSignature = crypto.createHmac('sha256', secretKey).update(componentSignature).digest('base64');
     const finalSignature = `HMACSHA256=${hmacSignature}`;
 
+    // Tembak API DOKU
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -106,12 +106,17 @@ export async function POST(req) {
     }
 
     // =========================================================================
-    // 💥 PROSES BARU: SIMPAN PESANAN KE SUPABASE SEBELUM KEMBALIKAN LINK KE USER
+    // PROSES SIMPAN PESANAN KE SUPABASE DENGAN LOGGING DETAIL
     // =========================================================================
     
-    // Gabungkan alamat menjadi satu string untuk disimpan
     const fullAddress = `${formData.address}, ${formData.city}, ${formData.state} ${formData.zip}`;
 
+    console.log("-----------------------------------------");
+    console.log("▶️ MEMULAI PROSES SIMPAN KE SUPABASE...");
+    console.log("Data Invoice:", invoiceNumber);
+    console.log("Total Amount:", calculatedTotal);
+    
+    // Coba simpan ke database
     const { error: dbError } = await supabase
       .from('orders')
       .insert([
@@ -123,17 +128,18 @@ export async function POST(req) {
           shipping_address: fullAddress,
           total_amount: calculatedTotal,
           status: 'PENDING',
-          // Simpan data keranjang asli (bukan line_items DOKU) agar admin tahu detail ukuran (S/M/L)
           items: items 
         }
       ]);
 
     if (dbError) {
-      console.error("Gagal menyimpan ke Database:", dbError);
-      // Kita tetap lanjut memberikan link DOKU, meskipun database error, 
-      // agar proses transaksi pembeli tidak terhenti. Di skenario produksi asli,
-      // mungkin Anda butuh logika "rollback".
+      console.error("❌ GAGAL MENYIMPAN KE SUPABASE! Detail Error:");
+      console.error(JSON.stringify(dbError, null, 2));
+      console.log("💡 Saran: Cek apakah RLS (Row Level Security) tabel 'orders' sudah dimatikan.");
+    } else {
+      console.log("✅ BERHASIL MENYIMPAN KE TABEL ORDERS!");
     }
+    console.log("-----------------------------------------");
 
     // =========================================================================
 

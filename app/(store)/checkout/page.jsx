@@ -8,7 +8,7 @@ import { useCartStore } from '../../../store/cartStore';
 import { useToastStore } from '../../../store/toastStore';
 
 export default function CheckoutPage() {
-  const { items, getTotalPrice, clearCart } = useCartStore();
+  const { items, getTotalPrice } = useCartStore();
   const addToast = useToastStore((state) => state.addToast);
   
   const [isProcessing, setIsProcessing] = useState(false);
@@ -50,7 +50,7 @@ export default function CheckoutPage() {
       const response = await fetch('/api/doku', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formData, items, total, shippingCost, adminFee }), 
+        body: JSON.stringify({ formData, items, shippingCost, adminFee }), 
       });
 
       const data = await response.json();
@@ -60,7 +60,7 @@ export default function CheckoutPage() {
         
         if (typeof window !== 'undefined' && window.loadJokulCheckout) {
           window.loadJokulCheckout(data.payment_url);
-          clearCart(); 
+          // Pengosongan keranjang (clearCart) dipindahkan ke halaman /success
         } else {
           window.location.href = data.payment_url;
         }
