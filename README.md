@@ -1,37 +1,65 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+Warhope E-Commerce - UTS Web 2
 
-## Getting Started
+Project ini dibuat untuk memenuhi tugas Ujian Tengah Semester (UTS) mata kuliah Pemrograman Web 2. Aplikasi ini merupakan simulasi toko online yang dibangun menggunakan Next.js (sebagai Static Site), Tailwind CSS, dan LocalStorage sebagai simulasi database.
 
-First, run the development server:
+🧑‍💻 Identitas Mahasiswa
 
-```bash
+Nama: [NAMA DEPAN] [NAMA BELAKANG]
+NIM: [NIM ANDA]
+Kelas: [KELAS ANDA]
+
+🚀 Fitur Aplikasi
+
+Sesuai dengan ketentuan UTS, project ini memiliki fitur-fitur berikut:
+
+Authentication (Simulasi): Login & Register dengan validasi (email unik, password min. 6 karakter) disimpan di LocalStorage.
+
+Product Management: Menampilkan list dan detail produk yang di-fetch dari file products.json.
+
+Search & Filter: Pencarian produk berdasarkan nama dan kategori.
+
+Cart (Keranjang): Menambah, menghapus, mengubah kuantitas item, serta kalkulasi total harga otomatis.
+
+Checkout: Form pengiriman lengkap dan simulasi pembayaran (menyimpan data transaksi ke LocalStorage dengan ID unik).
+
+Order History: Menampilkan riwayat pesanan (user dashboard).
+
+Fitur Bonus: Wishlist produk, simulasi rating/ulasan produk, UI/UX rapi dengan Tailwind CSS.
+
+🛠️ Teknologi yang Digunakan
+
+Frontend Framework: Next.js (App Router) - Static Export
+
+Styling: Tailwind CSS & Lucide React (Icons)
+
+State Management: Zustand (dengan middleware persist untuk sinkronisasi LocalStorage)
+
+Database (Simulasi): File JSON statis & Browser LocalStorage
+
+💻 Cara Menjalankan Project (Local)
+
+Pastikan Anda sudah menginstal Node.js.
+
+Clone repository ini:
+
+git clone [URL_GITHUB_ANDA]
+cd warhope-ecom
+
+
+Install dependensi (library) yang dibutuhkan:
+
+npm install
+
+
+Jalankan server development:
+
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Buka http://localhost:3000 di browser Anda.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+🌐 Link Demo Aplikasi
 
-## Learn More
+Aplikasi ini telah di-deploy dan dapat diakses secara online melalui GitHub Pages pada tautan berikut:
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-# warhope-local
+[Masukkan Link URL GitHub Pages Anda Di Sini, contoh: https://www.google.com/search?q=https://username.github.io/NamaDepan_NamaBelakang_UTS_Web2]

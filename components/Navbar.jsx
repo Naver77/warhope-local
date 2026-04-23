@@ -8,16 +8,13 @@ import { ShoppingBag, User, Search, Menu, X, ArrowRight, Heart } from 'lucide-re
 import { useCartStore } from '../store/cartStore';
 import { useWishlistStore } from '../store/wishlistStore';
 import { useAuthStore } from '../store/authStore';
-import { getAllProducts } from '../lib/api';
 
 export default function Navbar() {
   const pathname = usePathname();
   
   const items = useCartStore((state) => state.items);
-  // Ambil data wishlist dan fungsi sync-nya
   const wishlistItems = useWishlistStore((state) => state.wishlist); 
-  const syncWishlistFromDB = useWishlistStore((state) => state.syncWishlistFromDB);
-
+  
   const { user, isInitialized } = useAuthStore();
 
   const [isScrolled, setIsScrolled] = useState(false);
@@ -34,22 +31,22 @@ export default function Navbar() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // PENGAMBILAN PRODUK & SINKRONISASI WISHLIST OTOMATIS
+  // PENGAMBILAN PRODUK DARI JSON (SYARAT UTS)
   useEffect(() => {
-    const fetchProductsAndSync = async () => {
-      const data = await getAllProducts();
-      setProducts(data || []);
-
-      // Jika user sudah login dan produk ada, segera tarik data Wishlist dari Cloud
-      if (user?.email && data?.length > 0) {
-        syncWishlistFromDB(user.email, data);
+    const fetchProducts = async () => {
+      try {
+        const response = await fetch('/products.json');
+        const data = await response.json();
+        setProducts(data || []);
+      } catch (error) {
+        console.error("Gagal mengambil produk untuk search:", error);
       }
     };
-
-    if (isInitialized) {
-      fetchProductsAndSync();
-    }
-  }, [user, isInitialized, syncWishlistFromDB]);
+    
+    fetchProducts();
+    // Catatan: Fungsi syncWishlistFromDB sudah dihapus karena state wishlist 
+    // sekarang otomatis disinkronisasi oleh LocalStorage via persist middleware.
+  }, []);
 
   const searchResults = useMemo(() => {
     if (searchQuery.trim() === '') return [];

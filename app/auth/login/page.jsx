@@ -3,25 +3,21 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Mail, KeyRound, ArrowRight, ShieldCheck, ArrowLeft } from 'lucide-react';
+import { Mail, KeyRound, ArrowRight, ShieldCheck, ArrowLeft, User } from 'lucide-react';
 import { useAuthStore } from '../../../store/authStore';
-import { useToastStore } from '../../../store/toastStore';
 
 export default function LoginPage() {
   const router = useRouter();
-  // PERBAIKAN 1: Tambahkan isInitialized dari authStore
-  const { login, user, checkAuth, isInitialized } = useAuthStore();
-  const addToast = useToastStore((state) => state.addToast);
+  const { login, register, user, checkAuth, isInitialized } = useAuthStore();
 
-  const [formData, setFormData] = useState({ email: '', password: '' });
+  const [isLoginMode, setIsLoginMode] = useState(true); // Toggle Login/Register
+  const [formData, setFormData] = useState({ name: '', email: '', password: '' });
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // PERBAIKAN 2: Pisahkan useEffect untuk checkAuth (Hanya jalan sekali saat dimuat)
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
 
-  // PERBAIKAN 3: useEffect terpisah untuk redirect jika user sudah login
   useEffect(() => {
     if (isInitialized && user) {
       router.push(user.role === 'admin' ? '/admin' : '/');
@@ -33,54 +29,79 @@ export default function LoginPage() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleLogin = (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     setIsProcessing(true);
 
-    const adminPass = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || 'admin123';
-
     setTimeout(() => {
-      // LOGIKA ADMIN
-      if (formData.email === 'admin@warhope.com') {
-        if (formData.password === adminPass) {
-          login({ name: 'Super Admin', email: formData.email, role: 'admin' });
-          addToast('Selamat datang kembali, Admin!', 'success');
-          router.push('/admin');
+      if (isLoginMode) {
+        // PROSES LOGIN
+        const result = login(formData.email, formData.password);
+        if (result.success) {
+          alert(result.message);
         } else {
-          addToast('Password Admin salah!', 'error');
+          alert(result.message);
           setIsProcessing(false);
         }
-      } 
-      // LOGIKA USER BIASA (Simulasi)
-      else {
-        // Untuk MVP, semua password user biasa kita anggap benar
-        const username = formData.email.split('@')[0];
-        login({ name: username, email: formData.email, role: 'user' });
-        addToast(`Halo ${username}, selamat berbelanja!`, 'success');
-        router.push('/');
+      } else {
+        // PROSES REGISTER (SYARAT UTS)
+        const result = register(formData.name, formData.email, formData.password);
+        if (result.success) {
+          alert(result.message);
+          setIsLoginMode(true); // Pindah ke form login setelah sukses daftar
+          setFormData(prev => ({ ...prev, password: '' })); // Kosongkan password
+        } else {
+          alert(result.message); // Tampilkan pesan error (Misal: Password < 6, Email sudah ada)
+        }
+        setIsProcessing(false);
       }
-    }, 1000); // Animasi loading
+    }, 800); // Simulasi loading network
+  };
+
+  const toggleMode = () => {
+    setIsLoginMode(!isLoginMode);
+    setFormData({ name: '', email: '', password: '' }); // Reset form
   };
 
   return (
-    <main className="min-h-screen bg-background flex flex-col items-center justify-center p-4 relative">
+    <main className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 relative">
       
-      {/* Tombol Kembali */}
-      <Link href="/" className="absolute top-8 left-8 flex items-center gap-2 text-sm font-bold text-foreground/50 hover:text-foreground transition-colors">
+      <Link href="/" className="absolute top-8 left-8 flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-slate-900 transition-colors">
         <ArrowLeft className="w-4 h-4" /> Kembali ke Toko
       </Link>
 
-      <div className="max-w-md w-full bg-white dark:bg-slate-800/50 rounded-3xl shadow-xl overflow-hidden border border-slate-200 dark:border-slate-800 p-8 animate-in zoom-in-95 duration-500">
+      <div className="max-w-md w-full bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-200 p-8 animate-in zoom-in-95 duration-500">
         <div className="text-center mb-10">
-          <h1 className="text-3xl font-black text-foreground tracking-tight mb-2">Warhope<span className="text-blue-600">.</span></h1>
-          <p className="text-sm text-foreground/60">Masuk ke akun Anda untuk pengalaman berbelanja yang lebih baik.</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight mb-2">Warhope<span className="text-blue-600">.</span></h1>
+          <p className="text-sm text-slate-500">
+            {isLoginMode ? "Masuk ke akun Anda untuk pengalaman berbelanja." : "Buat akun baru untuk mulai berbelanja."}
+          </p>
         </div>
         
-        <form onSubmit={handleLogin} className="space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Input Nama (Hanya muncul saat mode Register) */}
+          {!isLoginMode && (
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">Nama Lengkap</label>
+              <div className="relative">
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <input 
+                  type="text" 
+                  name="name"
+                  required={!isLoginMode}
+                  value={formData.name}
+                  onChange={handleInputChange}
+                  placeholder="Budi Santoso" 
+                  className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all text-slate-900"
+                />
+              </div>
+            </div>
+          )}
+
           <div className="space-y-2">
-            <label className="text-[10px] font-bold text-foreground/60 uppercase tracking-widest px-1">Alamat Email</label>
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">Alamat Email</label>
             <div className="relative">
-              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-foreground/40" />
+              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
               <input 
                 type="email" 
                 name="email"
@@ -88,23 +109,23 @@ export default function LoginPage() {
                 value={formData.email}
                 onChange={handleInputChange}
                 placeholder="email@contoh.com" 
-                className="w-full pl-12 pr-4 py-3.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all text-foreground"
+                className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all text-slate-900"
               />
             </div>
           </div>
 
           <div className="space-y-2">
-            <label className="text-[10px] font-bold text-foreground/60 uppercase tracking-widest px-1">Kata Sandi</label>
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">Kata Sandi</label>
             <div className="relative">
-              <KeyRound className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-foreground/40" />
+              <KeyRound className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
               <input 
                 type="password" 
                 name="password"
                 required
                 value={formData.password}
                 onChange={handleInputChange}
-                placeholder="••••••••" 
-                className="w-full pl-12 pr-4 py-3.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all text-foreground"
+                placeholder={isLoginMode ? "••••••••" : "Minimal 6 karakter"} 
+                className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all text-slate-900"
               />
             </div>
           </div>
@@ -117,13 +138,20 @@ export default function LoginPage() {
             {isProcessing ? (
               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
             ) : (
-              <>Masuk <ArrowRight className="w-4 h-4" /></>
+              <>{isLoginMode ? 'Masuk' : 'Daftar'} <ArrowRight className="w-4 h-4" /></>
             )}
           </button>
         </form>
 
-        <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 text-center">
-          <p className="text-[10px] text-foreground/40 uppercase tracking-widest font-bold flex justify-center items-center gap-1">
+        <div className="mt-6 text-center text-sm text-slate-500">
+          {isLoginMode ? "Belum punya akun? " : "Sudah punya akun? "}
+          <button onClick={toggleMode} className="text-blue-600 font-bold hover:underline outline-none">
+            {isLoginMode ? "Daftar sekarang" : "Masuk di sini"}
+          </button>
+        </div>
+
+        <div className="mt-8 pt-6 border-t border-slate-100 text-center">
+          <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold flex justify-center items-center gap-1">
             <ShieldCheck className="w-3 h-3" /> Login Aman & Terenkripsi
           </p>
         </div>
