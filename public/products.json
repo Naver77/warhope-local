@@ -1,0 +1,34 @@
+[
+  {
+    "id": 1,
+    "name": "Classic White T-Shirt",
+    "price": 120000,
+    "image": "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=500&q=80",
+    "description": "Kaos putih polos dengan bahan katun bambu yang sangat nyaman dan menyerap keringat untuk aktivitas harian.",
+    "category": "T-Shirts"
+  },
+  {
+    "id": 2,
+    "name": "Midnight Black Hoodie",
+    "price": 250000,
+    "image": "https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=500&q=80",
+    "description": "Hoodie hitam elegan dengan material fleece tebal, cocok untuk cuaca dingin dan gaya kasual.",
+    "category": "Hoodies"
+  },
+  {
+    "id": 3,
+    "name": "Urban Cargo Pants",
+    "price": 280000,
+    "image": "https://images.unsplash.com/photo-1624378439575-d1ead6bb1d13?w=500&q=80",
+    "description": "Celana cargo fungsional dengan banyak kantong, menggunakan bahan canvas yang kuat dan awet.",
+    "category": "Pants"
+  },
+  {
+    "id": 4,
+    "name": "Beige Knitwear Cozy",
+    "price": 195000,
+    "image": "https://images.unsplash.com/photo-1620799140188-3b2a02fd9a77?w=500&q=80",
+    "description": "Sweater rajut warna beige yang lembut, memberikan kesan hangat dan gaya ala streetwear Korea.",
+    "category": "Knitwear"
+  }
+]

@@ -2,33 +2,25 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import Script from 'next/script';
 import { useRouter } from 'next/navigation';
-import { Truck, ShoppingBag, ShieldCheck, ArrowRight, MapPin, ReceiptText } from 'lucide-react';
+import { Truck, ShoppingBag } from 'lucide-react';
 import { useCartStore } from '../../../store/cartStore';
-import { useToastStore } from '../../../store/toastStore';
 import { useAuthStore } from '../../../store/authStore';
+import { useOrderStore } from '../../../store/orderStore'; 
 
 const PROVINCES = [
   { name: 'Pilih Provinsi...', cost: 0 },
   { name: 'DKI Jakarta', cost: 10000 },
-  { name: 'Banten', cost: 12000 },
   { name: 'Jawa Barat', cost: 15000 },
   { name: 'Jawa Tengah', cost: 20000 },
-  { name: 'DI Yogyakarta', cost: 20000 },
   { name: 'Jawa Timur', cost: 25000 },
-  { name: 'Bali', cost: 35000 },
-  { name: 'Sumatera', cost: 45000 },
-  { name: 'Kalimantan', cost: 55000 },
-  { name: 'Sulawesi', cost: 60000 },
-  { name: 'Papua & Maluku', cost: 80000 },
 ];
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { items, getTotalPrice } = useCartStore();
-  const addToast = useToastStore((state) => state.addToast);
+  const { items, getTotalPrice, clearCart } = useCartStore();
   const { user, isInitialized, checkAuth } = useAuthStore();
+  const addOrder = useOrderStore((state) => state.addOrder);
   
   const [isClient, setIsClient] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -38,8 +30,8 @@ export default function CheckoutPage() {
   });
 
   const [baseShipping, setBaseShipping] = useState(0);
-  const [shippingType, setShippingType] = useState('reguler'); 
 
+  // Perbaikan 1: Gunakan setTimeout agar setState tidak sinkron dan menghindari cascading render
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsClient(true);
@@ -48,32 +40,39 @@ export default function CheckoutPage() {
     return () => clearTimeout(timer);
   }, [checkAuth]);
 
+  // Perbaikan 2: Sama halnya di sini, gunakan setTimeout dan cegah update jika email sudah terisi
   useEffect(() => {
     if (isClient && isInitialized) {
       if (!user) {
-        addToast('Anda harus masuk (login) untuk melanjutkan pembayaran.', 'error');
+        alert('Anda harus masuk (login) untuk melanjutkan pembayaran.');
         router.push('/auth/login');
-      } else {
-        const nameParts = user.name ? user.name.split(' ') : [];
-        setFormData(prev => ({
-          ...prev,
-          email: user.email || '',
-          firstName: nameParts[0] || '',
-          lastName: nameParts.slice(1).join(' ') || ''
-        }));
+      } else if (!formData.email) {
+        const timer = setTimeout(() => {
+          const nameParts = user.name ? user.name.split(' ') : [];
+          setFormData(prev => ({
+            ...prev,
+            email: user.email || '',
+            firstName: nameParts[0] || '',
+            lastName: nameParts.slice(1).join(' ') || ''
+          }));
+        }, 0);
+        return () => clearTimeout(timer);
       }
     }
-  }, [isClient, isInitialized, user, router, addToast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isClient, isInitialized, user, router]);
 
   const subtotal = getTotalPrice();
   const tax = subtotal * 0.1;
-  const shippingCost = baseShipping === 0 ? 0 : (shippingType === 'reguler' ? baseShipping : baseShipping + 20000);
+  const shippingCost = baseShipping; // Menggunakan baseShipping langsung
   const adminFee = 1500; 
   const grandTotal = subtotal + tax + shippingCost + adminFee;
 
   const formatRupiah = (number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(number);
 
-  const handleInputChange = (e) => setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+  const handleInputChange = (e) => {
+    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+  };
 
   const handleProvinceChange = (e) => {
     const provName = e.target.value;
@@ -82,269 +81,147 @@ export default function CheckoutPage() {
     setBaseShipping(selectedProv ? selectedProv.cost : 0);
   };
 
-  const handlePayment = async (e) => {
+  const handlePayment = (e) => {
     e.preventDefault();
     
     if (!formData.firstName || !formData.email || !formData.address || !formData.phone) {
-      addToast('Mohon lengkapi semua data pengiriman dengan benar.', 'error');
+      alert('Mohon lengkapi semua data pengiriman dengan benar.');
       return;
     }
 
     if (baseShipping === 0) {
-      addToast('Mohon pilih Provinsi pengiriman terlebih dahulu.', 'error');
+      alert('Mohon pilih Provinsi pengiriman terlebih dahulu.');
       return;
     }
 
     setIsProcessing(true);
 
-    try {
-      const response = await fetch('/api/doku', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          formData, 
-          items, 
-          shippingCost, 
-          tax,
-          adminFee,
-          totalAmount: grandTotal 
-        }), 
-      });
+    // SIMULASI PROSES PEMBAYARAN & SIMPAN KE LOCALSTORAGE (SYARAT UTS)
+    setTimeout(() => {
+      // 1. Generate ID Transaksi
+      const transactionId = `TRX-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
-      const data = await response.json();
+      // 2. Buat objek order
+      const newOrder = {
+        id: transactionId,
+        date: new Date().toISOString(),
+        customer: formData,
+        items: items,
+        shippingCost,
+        tax,
+        totalAmount: grandTotal,
+        status: 'LUNAS (Simulasi)'
+      };
 
-      if (response.ok && data.payment_url) {
-        addToast(`Memuat layar pembayaran aman...`, 'info');
-        
-        if (typeof window !== 'undefined' && window.loadJokulCheckout) {
-          window.loadJokulCheckout(data.payment_url);
-        } else {
-          window.location.href = data.payment_url;
-        }
-      } else {
-        throw new Error(data.error || "Gagal mendapatkan link pembayaran dari server.");
-      }
-    } catch (error) {
-      console.error(error);
-      addToast('Terjadi kesalahan saat memuat sistem pembayaran. Hubungi CS Warhope.', 'error');
-    } finally {
+      // 3. Simpan ke LocalStorage
+      addOrder(newOrder);
+
+      // 4. Kosongkan keranjang
+      clearCart();
+
+      alert(`Pembayaran Berhasil!\nID Transaksi Anda: ${transactionId}`);
       setIsProcessing(false);
-    }
+      
+      // Redirect ke halaman awal
+      router.push('/'); 
+    }, 1500);
   };
 
-  if (!isClient || !isInitialized || !user) return <div className="min-h-screen pt-32 pb-20 bg-background"></div>;
+  if (!isClient || !isInitialized || !user) return <div className="min-h-screen pt-32 bg-background"></div>;
 
   if (items.length === 0) {
     return (
-      <main className="pt-32 pb-20 px-4 md:px-8 max-w-7xl mx-auto min-h-screen flex flex-col items-center justify-center text-center">
-        <ShoppingBag className="w-20 h-20 text-slate-200 dark:text-slate-800 mb-6" />
-        <h2 className="text-2xl font-bold text-foreground mb-2">Keranjang Anda kosong</h2>
-        <p className="text-foreground/60 mb-8">Anda harus memilih produk sebelum melakukan checkout.</p>
-        <Link href="/" className="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20 active:scale-95">
-          Kembali Berbelanja
-        </Link>
+      <main className="pt-32 pb-20 px-4 flex flex-col items-center justify-center text-center">
+        <ShoppingBag className="w-20 h-20 text-slate-200 mb-6" />
+        <h2 className="text-2xl font-bold mb-2">Keranjang Anda kosong</h2>
+        <Link href="/" className="bg-blue-600 text-white px-8 py-3 rounded-xl mt-4 inline-block font-bold">Kembali Berbelanja</Link>
       </main>
     );
   }
 
-  const isSandbox = process.env.NEXT_PUBLIC_DOKU_IS_PRODUCTION !== "true";
-  const dokuScriptUrl = isSandbox 
-    ? "https://sandbox.doku.com/jokul-checkout-js/v1/jokul-checkout-1.0.0.js"
-    : "https://jokul.doku.com/jokul-checkout-js/v1/jokul-checkout-1.0.0.js";
-
   return (
-    <main className="pt-32 pb-20 px-4 md:px-8 max-w-7xl mx-auto min-h-screen bg-background">
-      
-      <Script src={dokuScriptUrl} strategy="lazyOnload" />
-
+    <main className="pt-32 pb-20 px-4 md:px-8 max-w-7xl mx-auto min-h-screen">
       <header className="mb-12 text-center">
-        <h1 className="text-4xl font-extrabold tracking-tight text-foreground mb-4">Selesaikan Pesanan</h1>
-        <div className="flex justify-center items-center gap-4">
-          <Link href="/cart" className="flex items-center gap-2 group cursor-pointer">
-            <span className="w-8 h-8 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300 flex items-center justify-center text-sm font-bold shadow-sm transition-colors group-hover:bg-blue-200">1</span>
-            <span className="text-sm font-semibold text-foreground/70 group-hover:text-foreground">Keranjang</span>
-          </Link>
-          <div className="h-px w-8 bg-blue-600 dark:bg-blue-400"></div>
-          <div className="flex items-center gap-2">
-            <span className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-bold shadow-sm">2</span>
-            <span className="text-sm font-semibold text-foreground">Pengiriman & Bayar</span>
-          </div>
-        </div>
+        <h1 className="text-4xl font-extrabold tracking-tight mb-4">Selesaikan Pesanan</h1>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
         <div className="lg:col-span-8 space-y-8">
           
-          <section className="bg-white dark:bg-slate-800/50 p-8 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800">
+          <section className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
             <div className="flex items-center gap-3 mb-8">
-              <Truck className="text-blue-600 dark:text-blue-500 w-6 h-6" />
-              <h2 className="text-xl font-bold tracking-tight text-foreground">Informasi Pengiriman</h2>
+              <Truck className="text-blue-600 w-6 h-6" />
+              <h2 className="text-xl font-bold">Informasi Pengiriman</h2>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-widest text-foreground/50 mb-2 px-1">Nama Depan *</label>
-                <input name="firstName" value={formData.firstName} onChange={handleInputChange} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="Budi" />
+                <label className="block text-[10px] font-bold uppercase mb-2">Nama Depan *</label>
+                <input name="firstName" value={formData.firstName} onChange={handleInputChange} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm" />
               </div>
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-widest text-foreground/50 mb-2 px-1">Nama Belakang</label>
-                <input name="lastName" value={formData.lastName} onChange={handleInputChange} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="Santoso" />
+                <label className="block text-[10px] font-bold uppercase mb-2">Nama Belakang</label>
+                <input name="lastName" value={formData.lastName} onChange={handleInputChange} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm" />
               </div>
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-widest text-foreground/50 mb-2 px-1">Alamat Email *</label>
-                <input type="email" name="email" value={formData.email} onChange={handleInputChange} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground/50 rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="budi@email.com" readOnly />
+                <label className="block text-[10px] font-bold uppercase mb-2">Email *</label>
+                <input type="email" name="email" value={formData.email} onChange={handleInputChange} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm" readOnly />
               </div>
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-widest text-foreground/50 mb-2 px-1">Nomor HP / WhatsApp *</label>
-                <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="08123456789" />
+                <label className="block text-[10px] font-bold uppercase mb-2">No HP *</label>
+                <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm" />
               </div>
               <div className="col-span-1 md:col-span-2">
-                <label className="block text-[10px] font-bold uppercase tracking-widest text-foreground/50 mb-2 px-1">Alamat Lengkap *</label>
-                <input name="address" value={formData.address} onChange={handleInputChange} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="Nama jalan, gedung, RT/RW, no rumah" />
+                <label className="block text-[10px] font-bold uppercase mb-2">Alamat Lengkap *</label>
+                <input name="address" value={formData.address} onChange={handleInputChange} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm" />
               </div>
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-widest text-foreground/50 mb-2 px-1">Kota/Kabupaten *</label>
-                <input name="city" value={formData.city} onChange={handleInputChange} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="Jakarta Selatan" />
+                <label className="block text-[10px] font-bold uppercase mb-2">Kota/Kabupaten *</label>
+                <input name="city" value={formData.city} onChange={handleInputChange} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-widest text-foreground/50 mb-2 px-1">Provinsi *</label>
-                  <select 
-                    name="state" 
-                    value={formData.state} 
-                    onChange={handleProvinceChange} 
-                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all appearance-none cursor-pointer"
-                  >
+                  <label className="block text-[10px] font-bold uppercase mb-2">Provinsi *</label>
+                  <select name="state" value={formData.state} onChange={handleProvinceChange} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm">
                     {PROVINCES.map((prov) => (
                       <option key={prov.name} value={prov.name}>{prov.name}</option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-widest text-foreground/50 mb-2 px-1">Kode Pos</label>
-                  <input name="zip" value={formData.zip} onChange={handleInputChange} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="12345" />
+                  <label className="block text-[10px] font-bold uppercase mb-2">Kode Pos</label>
+                  <input name="zip" value={formData.zip} onChange={handleInputChange} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm" />
                 </div>
               </div>
-            </div>
-            
-            <div className={`mt-8 pt-8 border-t border-slate-200 dark:border-slate-700 transition-opacity duration-300 ${baseShipping === 0 ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
-              <div className="flex items-center gap-3 mb-4">
-                <MapPin className="text-blue-600 dark:text-blue-500 w-5 h-5" />
-                <h3 className="text-sm font-bold tracking-tight text-foreground uppercase">Metode Pengiriman</h3>
-              </div>
-              
-              {baseShipping === 0 && (
-                <p className="text-xs text-amber-600 mb-4">Silakan pilih provinsi terlebih dahulu untuk melihat tarif pengiriman.</p>
-              )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <label className={`border rounded-xl p-4 cursor-pointer transition-all flex justify-between items-center ${shippingType === 'reguler' && baseShipping > 0 ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-900/10 shadow-sm' : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
-                  <div>
-                    <p className="font-bold text-sm text-foreground">Reguler</p>
-                    <p className="text-xs text-foreground/60 mt-1">Estimasi 3-5 hari kerja</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="font-bold text-sm">{baseShipping > 0 ? formatRupiah(baseShipping) : '-'}</span>
-                    <input type="radio" name="shipping" value="reguler" checked={shippingType === 'reguler'} onChange={() => setShippingType('reguler')} disabled={baseShipping === 0} className="w-4 h-4 text-blue-600 focus:ring-blue-500" />
-                  </div>
-                </label>
-                
-                <label className={`border rounded-xl p-4 cursor-pointer transition-all flex justify-between items-center ${shippingType === 'ekspres' && baseShipping > 0 ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-900/10 shadow-sm' : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
-                  <div>
-                    <p className="font-bold text-sm text-foreground">Ekspres (Kilat)</p>
-                    <p className="text-xs text-foreground/60 mt-1">Estimasi 1-2 hari kerja</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="font-bold text-sm">{baseShipping > 0 ? formatRupiah(baseShipping + 20000) : '-'}</span>
-                    <input type="radio" name="shipping" value="ekspres" checked={shippingType === 'ekspres'} onChange={() => setShippingType('ekspres')} disabled={baseShipping === 0} className="w-4 h-4 text-blue-600 focus:ring-blue-500" />
-                  </div>
-                </label>
-              </div>
-            </div>
-
-          </section>
-
-          <section className="bg-white dark:bg-slate-800/50 p-8 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800">
-            <div className="flex justify-between items-center mb-8 border-b border-slate-100 dark:border-slate-700 pb-4">
-              <div className="flex items-center gap-3">
-                <ReceiptText className="text-blue-600 dark:text-blue-500 w-6 h-6" />
-                <h2 className="text-xl font-bold tracking-tight text-foreground">Rincian Pesanan ({items.length})</h2>
-              </div>
-              <Link href="/cart" className="text-blue-600 dark:text-blue-400 text-sm font-semibold hover:underline">Edit Pesanan</Link>
-            </div>
-            
-            <div className="space-y-6">
-              {items.map((item) => {
-                const uniqueKey = `${item.id}-${item.selectedColor}-${item.selectedSize}`;
-                return (
-                  <div key={uniqueKey} className="flex items-center gap-6 group">
-                    <div className="w-20 h-20 rounded-xl overflow-hidden bg-slate-50 dark:bg-slate-900 shrink-0 border border-slate-100 dark:border-slate-700">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img className="w-full h-full object-cover" alt={item.name} src={item.image} />
-                    </div>
-                    <div className="grow">
-                      <div className="flex justify-between mb-1">
-                        <h3 className="font-bold text-foreground text-sm">{item.name}</h3>
-                        <span className="font-bold text-foreground text-sm">{formatRupiah(item.price * item.quantity)}</span>
-                      </div>
-                      {/* PENGHAPUSAN TEKS WARNA DI SINI */}
-                      <p className="text-xs text-foreground/60 mb-2">Size: {item.selectedSize}</p>
-                      <span className="text-xs font-bold bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md text-foreground">Qty: {item.quantity}</span>
-                    </div>
-                  </div>
-                );
-              })}
             </div>
           </section>
         </div>
 
         <div className="lg:col-span-4 space-y-6">
-          <div className="bg-slate-900 dark:bg-slate-800 border border-transparent dark:border-slate-700 text-white p-8 rounded-3xl shadow-xl sticky top-28">
+          <div className="bg-slate-900 text-white p-8 rounded-3xl shadow-xl sticky top-28">
             <h2 className="text-xl font-bold tracking-tight mb-8">Total Pembayaran</h2>
             <div className="space-y-4 mb-8">
               <div className="flex justify-between text-sm">
                 <span className="text-slate-400">Subtotal Produk</span>
                 <span className="font-medium text-white">{formatRupiah(subtotal)}</span>
               </div>
-              
               <div className="flex justify-between text-sm">
-                <span className="text-slate-400">Pajak PPN (10%)</span>
-                <span className="font-medium text-white">{formatRupiah(tax)}</span>
-              </div>
-
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-400">Pengiriman {baseShipping > 0 ? (shippingType === 'reguler' ? '(Reg.)' : '(Eks.)') : ''}</span>
+                <span className="text-slate-400">Pengiriman</span>
                 <span className="font-medium text-white">{formatRupiah(shippingCost)}</span>
               </div>
-              
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-400">Biaya Layanan DOKU</span>
-                <span className="font-medium text-white">{formatRupiah(adminFee)}</span>
-              </div>
-              
               <div className="pt-4 border-t border-slate-700 flex justify-between items-end">
                 <span className="text-lg font-bold">Total</span>
-                <span className="text-2xl font-black tracking-tighter text-blue-400">{formatRupiah(grandTotal)}</span>
+                <span className="text-2xl font-black text-blue-400">{formatRupiah(grandTotal)}</span>
               </div>
             </div>
             
-            <div className="space-y-4">
-              <button 
-                onClick={handlePayment} 
-                disabled={isProcessing || baseShipping === 0}
-                className="w-full py-4 bg-blue-600 text-white rounded-full font-bold text-sm hover:bg-blue-500 shadow-lg shadow-blue-900/20 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
-              >
-                {isProcessing ? (
-                  <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Menghubungkan...</>
-                ) : (
-                  <>Bayar dengan DOKU <ArrowRight className="w-4 h-4" /></>
-                )}
-              </button>
-              <p className="text-[9px] text-center text-slate-400 uppercase tracking-widest font-bold flex flex-col items-center gap-1 mt-2">
-                <ShieldCheck className="w-3 h-3 text-blue-400" />
-                Diperiksa & Diamankan oleh DOKU
-              </p>
-            </div>
+            <button 
+              onClick={handlePayment} 
+              disabled={isProcessing || baseShipping === 0}
+              className="w-full py-4 bg-blue-600 text-white rounded-full font-bold hover:bg-blue-500 transition-all flex justify-center disabled:opacity-50"
+            >
+              {isProcessing ? 'Memproses...' : 'Selesaikan Pembayaran'}
+            </button>
           </div>
         </div>
       </div>
