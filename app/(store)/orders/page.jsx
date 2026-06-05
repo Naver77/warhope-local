@@ -27,11 +27,12 @@ export default function UserOrdersPage() {
   }, [checkAuth]);
 
   const fetchOrders = useCallback(async () => {
+    if (!user) return;
     setIsLoading(true);
     const data = await getUserOrders(user.id);
     setOrders(data);
     setIsLoading(false);
-  }, [user.id]);
+  }, [user]);
 
   useEffect(() => {
     if (isInitialized) {
