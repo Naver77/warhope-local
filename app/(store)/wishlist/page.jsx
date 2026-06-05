@@ -39,9 +39,19 @@ export default function WishlistPage() {
   const formatRupiah = (number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(number);
 
   const handleMoveToCart = (product) => {
-    // Ambil default size dan color dari array produk
     const defaultColor = Array.isArray(product.colors) && product.colors.length > 0 ? product.colors[0] : "Default";
-    const defaultSize = Array.isArray(product.sizes) && product.sizes.length > 0 ? product.sizes[0] : "All Size";
+    
+    // Logika Cerdas: Parsing ukuran dari Supabase JSONB
+    let defaultSize = "All Size";
+    if (product.sizes) {
+      if (Array.isArray(product.sizes)) {
+        defaultSize = product.sizes[0] || "All Size";
+      } else {
+        const parsedSizes = typeof product.sizes === 'string' ? JSON.parse(product.sizes) : product.sizes;
+        const activeSizes = Object.entries(parsedSizes).filter(([, data]) => data.active);
+        if (activeSizes.length > 0) defaultSize = activeSizes[0][0];
+      }
+    }
 
     addItem({
       ...product,
@@ -50,9 +60,7 @@ export default function WishlistPage() {
       quantity: 1
     });
 
-    // Opsional: Hapus dari wishlist setelah dipindah ke keranjang
     toggleWishlist(product);
-    
     addToast(`${product.name} dipindahkan ke Keranjang!`, 'success');
   };
 

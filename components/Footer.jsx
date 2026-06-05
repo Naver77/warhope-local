@@ -11,16 +11,8 @@ export default function Footer() {
         
         {/* Kolom 1: Brand Info */}
         <div className="space-y-4 md:col-span-1">
-          <Link href="/" className="inline-block mb-4">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img 
-              src="/assets/warhope-clear.PNG" 
-              alt="Warhope Logo" 
-              className="h-10 w-auto object-contain dark:invert" 
-            />
-          </Link>
           <p className="text-sm text-foreground/60 leading-relaxed max-w-xs">
-            Mendefinisikan ulang gaya kasual dengan sentuhan modern. Warhope menghadirkan pakaian berkualitas tinggi untuk kenyamanan harian Anda.
+            Definisikan ulang gaya kasual dengan sentuhan modern. Warhope menghadirkan pakaian berkualitas tinggi untuk kenyamanan harian Anda.
           </p>
           <div className="flex items-center gap-4 pt-2">
             {/* INSTAGRAM SVG */}

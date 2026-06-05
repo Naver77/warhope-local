@@ -1,19 +1,35 @@
 import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
 
-// Inisialisasi Resend (Akan diabaikan jika API Key belum dipasang di .env.local)
+// Mengambil semua konfigurasi murni dari Environment Variables (.env)
 const resendApiKey = process.env.RESEND_API_KEY;
+const internalApiKey = process.env.INTERNAL_API_KEY;
+const senderEmail = process.env.RESEND_FROM_EMAIL;
+
 const resend = resendApiKey ? new Resend(resendApiKey) : null;
 
 export async function POST(req) {
   try {
+    // 1. LAPISAN KEAMANAN: Pastikan environment variable sudah diset
+    if (!internalApiKey) {
+      console.error("🚨 INTERNAL_API_KEY belum diatur di .env!");
+      return NextResponse.json({ error: "Server Configuration Error" }, { status: 500 });
+    }
+
+    // 2. VALIDASI AUTENTIKASI INTERNAL
+    const authHeader = req.headers.get('authorization');
+    if (!authHeader || authHeader !== `Bearer ${internalApiKey}`) {
+      console.warn('⚠️ Akses ditolak ke API Email: Authorization Header tidak valid.');
+      return NextResponse.json({ error: "Unauthorized access" }, { status: 401 });
+    }
+
     const { to, subject, type, orderData } = await req.json();
 
     if (!to || !type || !orderData) {
       return NextResponse.json({ error: "Data email tidak lengkap" }, { status: 400 });
     }
 
-    // --- TEMPLATE EMAIL HTML ELEGAN ---
+    // --- TEMPLATE EMAIL HTML ---
     let htmlContent = '';
     const formatRupiah = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num);
 
@@ -49,16 +65,15 @@ export async function POST(req) {
       `;
     }
 
-    // Jika API Key tidak ada, kita hanya pura-pura mengirim (Simulasi agar tidak error)
-    if (!resendApiKey) {
+    if (!resendApiKey || !senderEmail) {
       console.log("✉️ [SIMULASI EMAIL] Mengirim email ke:", to);
       console.log("Subjek:", subject);
-      return NextResponse.json({ success: true, simulated: true, message: "Email disimulasikan di konsol (API Key belum diatur)" });
+      return NextResponse.json({ success: true, simulated: true, message: "Email disimulasikan (Kredensial belum lengkap di .env)" });
     }
 
-    // Kirim email sungguhan via Resend
+    // 3. KIRIM EMAIL MENGGUNAKAN DATA DINAMIS DARI ENV
     const data = await resend.emails.send({
-      from: 'Warhope Store <onboarding@resend.dev>', // onboarding@resend.dev adalah domain gratis khusus testing dari Resend
+      from: senderEmail,
       to: [to],
       subject: subject,
       html: htmlContent,
@@ -68,6 +83,6 @@ export async function POST(req) {
 
   } catch (error) {
     console.error("Gagal mengirim email:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

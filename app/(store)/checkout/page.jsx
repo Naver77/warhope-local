@@ -8,25 +8,26 @@ import { Truck, ShoppingBag, ShieldCheck, ArrowRight, MapPin, ReceiptText } from
 import { useCartStore } from '../../../store/cartStore';
 import { useToastStore } from '../../../store/toastStore';
 import { useAuthStore } from '../../../store/authStore';
+import { createOrder } from '../../../lib/api'; // getProvinces dihapus
 
+// DATA ONGKIR STATIS (Tanpa perlu memanggil API)
 const PROVINCES = [
-  { name: 'Pilih Provinsi...', cost: 0 },
-  { name: 'DKI Jakarta', cost: 10000 },
-  { name: 'Banten', cost: 12000 },
-  { name: 'Jawa Barat', cost: 15000 },
-  { name: 'Jawa Tengah', cost: 20000 },
-  { name: 'DI Yogyakarta', cost: 20000 },
-  { name: 'Jawa Timur', cost: 25000 },
-  { name: 'Bali', cost: 35000 },
-  { name: 'Sumatera', cost: 45000 },
-  { name: 'Kalimantan', cost: 55000 },
-  { name: 'Sulawesi', cost: 60000 },
-  { name: 'Papua & Maluku', cost: 80000 },
+  { id: 1, name: 'DKI Jakarta', cost: 10000, etd: '1-2 Hari' },
+  { id: 2, name: 'Banten', cost: 12000, etd: '1-2 Hari' },
+  { id: 3, name: 'Jawa Barat', cost: 15000, etd: '1-2 Hari' },
+  { id: 4, name: 'Jawa Tengah', cost: 20000, etd: '2-3 Hari' },
+  { id: 5, name: 'DI Yogyakarta', cost: 20000, etd: '2-3 Hari' },
+  { id: 6, name: 'Jawa Timur', cost: 25000, etd: '2-4 Hari' },
+  { id: 7, name: 'Bali', cost: 35000, etd: '3-5 Hari' },
+  { id: 8, name: 'Sumatera', cost: 45000, etd: '3-6 Hari' },
+  { id: 9, name: 'Kalimantan', cost: 55000, etd: '4-7 Hari' },
+  { id: 10, name: 'Sulawesi', cost: 60000, etd: '4-8 Hari' },
+  { id: 11, name: 'Papua & Maluku', cost: 80000, etd: '5-10 Hari' }
 ];
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { items, getTotalPrice } = useCartStore();
+  const { items, getTotalPrice, clearCart } = useCartStore();
   const addToast = useToastStore((state) => state.addToast);
   const { user, isInitialized, checkAuth } = useAuthStore();
   
@@ -38,6 +39,7 @@ export default function CheckoutPage() {
   });
 
   const [baseShipping, setBaseShipping] = useState(0);
+  const [estimatedTime, setEstimatedTime] = useState('');
   const [shippingType, setShippingType] = useState('reguler'); 
 
   useEffect(() => {
@@ -65,27 +67,35 @@ export default function CheckoutPage() {
     }
   }, [isClient, isInitialized, user, router, addToast]);
 
+  // KALKULASI BERSIH (Tanpa Pajak & Tanpa Biaya Admin)
   const subtotal = getTotalPrice();
-  const tax = subtotal * 0.1;
   const shippingCost = baseShipping === 0 ? 0 : (shippingType === 'reguler' ? baseShipping : baseShipping + 20000);
-  const adminFee = 1500; 
-  const grandTotal = subtotal + tax + shippingCost + adminFee;
+  const grandTotal = subtotal + shippingCost;
 
   const formatRupiah = (number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(number);
 
   const handleInputChange = (e) => setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
 
+  // LOGIKA ONGKIR STATIS
   const handleProvinceChange = (e) => {
     const provName = e.target.value;
     const selectedProv = PROVINCES.find(p => p.name === provName);
+    
     setFormData(prev => ({ ...prev, state: provName }));
-    setBaseShipping(selectedProv ? selectedProv.cost : 0);
+    
+    if (selectedProv) {
+      setBaseShipping(selectedProv.cost);
+      setEstimatedTime(selectedProv.etd);
+    } else {
+      setBaseShipping(0);
+      setEstimatedTime('');
+    }
   };
 
   const handlePayment = async (e) => {
     e.preventDefault();
     
-    if (!formData.firstName || !formData.email || !formData.address || !formData.phone) {
+    if (!formData.firstName || !formData.email || !formData.address || !formData.phone || !formData.city) {
       addToast('Mohon lengkapi semua data pengiriman dengan benar.', 'error');
       return;
     }
@@ -105,8 +115,6 @@ export default function CheckoutPage() {
           formData, 
           items, 
           shippingCost, 
-          tax,
-          adminFee,
           totalAmount: grandTotal 
         }), 
       });
@@ -114,7 +122,22 @@ export default function CheckoutPage() {
       const data = await response.json();
 
       if (response.ok && data.payment_url) {
-        addToast(`Memuat layar pembayaran aman...`, 'info');
+        addToast(`Mencatat pesanan & memotong stok sementara...`, 'info');
+        
+        const fullAddress = `${formData.address}, ${formData.city}, Provinsi ${formData.state} ${formData.zip}`;
+        const orderPayload = {
+          invoice_number: data.order_id || `INVWH${Date.now()}`,
+          customer_name: `${formData.firstName} ${formData.lastName}`.trim(),
+          customer_email: formData.email,
+          customer_phone: formData.phone,
+          shipping_address: fullAddress,
+          items: items, 
+          total_amount: grandTotal,
+          status: 'PENDING_PAYMENT',
+        };
+
+        await createOrder(orderPayload, items);
+        clearCart(); 
         
         if (typeof window !== 'undefined' && window.loadJokulCheckout) {
           window.loadJokulCheckout(data.payment_url);
@@ -192,7 +215,7 @@ export default function CheckoutPage() {
               </div>
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-widest text-foreground/50 mb-2 px-1">Alamat Email *</label>
-                <input type="email" name="email" value={formData.email} onChange={handleInputChange} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground/50 rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="budi@email.com" readOnly />
+                <input type="email" name="email" value={formData.email} onChange={handleInputChange} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground/50 rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all cursor-not-allowed" placeholder="budi@email.com" readOnly />
               </div>
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-widest text-foreground/50 mb-2 px-1">Nomor HP / WhatsApp *</label>
@@ -204,7 +227,7 @@ export default function CheckoutPage() {
               </div>
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-widest text-foreground/50 mb-2 px-1">Kota/Kabupaten *</label>
-                <input name="city" value={formData.city} onChange={handleInputChange} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="Jakarta Selatan" />
+                <input name="city" value={formData.city} onChange={handleInputChange} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="Misal: Jakarta Selatan, Kab. Bogor" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -215,8 +238,9 @@ export default function CheckoutPage() {
                     onChange={handleProvinceChange} 
                     className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all appearance-none cursor-pointer"
                   >
+                    <option value="" disabled>Pilih Provinsi...</option>
                     {PROVINCES.map((prov) => (
-                      <option key={prov.name} value={prov.name}>{prov.name}</option>
+                      <option key={prov.id} value={prov.name}>{prov.name}</option>
                     ))}
                   </select>
                 </div>
@@ -230,18 +254,18 @@ export default function CheckoutPage() {
             <div className={`mt-8 pt-8 border-t border-slate-200 dark:border-slate-700 transition-opacity duration-300 ${baseShipping === 0 ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
               <div className="flex items-center gap-3 mb-4">
                 <MapPin className="text-blue-600 dark:text-blue-500 w-5 h-5" />
-                <h3 className="text-sm font-bold tracking-tight text-foreground uppercase">Metode Pengiriman</h3>
+                <h3 className="text-sm font-bold tracking-tight text-foreground uppercase">Metode Pengiriman dari Gudang Kami</h3>
               </div>
               
               {baseShipping === 0 && (
-                <p className="text-xs text-amber-600 mb-4">Silakan pilih provinsi terlebih dahulu untuk melihat tarif pengiriman.</p>
+                <p className="text-xs text-amber-600 mb-4">Silakan pilih provinsi terlebih dahulu untuk melihat estimasi dan tarif pengiriman.</p>
               )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <label className={`border rounded-xl p-4 cursor-pointer transition-all flex justify-between items-center ${shippingType === 'reguler' && baseShipping > 0 ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-900/10 shadow-sm' : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
                   <div>
                     <p className="font-bold text-sm text-foreground">Reguler</p>
-                    <p className="text-xs text-foreground/60 mt-1">Estimasi 3-5 hari kerja</p>
+                    <p className="text-xs text-foreground/60 mt-1">Estimasi tiba dalam {estimatedTime || '-'}</p>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="font-bold text-sm">{baseShipping > 0 ? formatRupiah(baseShipping) : '-'}</span>
@@ -252,7 +276,7 @@ export default function CheckoutPage() {
                 <label className={`border rounded-xl p-4 cursor-pointer transition-all flex justify-between items-center ${shippingType === 'ekspres' && baseShipping > 0 ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-900/10 shadow-sm' : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
                   <div>
                     <p className="font-bold text-sm text-foreground">Ekspres (Kilat)</p>
-                    <p className="text-xs text-foreground/60 mt-1">Estimasi 1-2 hari kerja</p>
+                    <p className="text-xs text-foreground/60 mt-1">Dikirim dengan prioritas utama</p>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="font-bold text-sm">{baseShipping > 0 ? formatRupiah(baseShipping + 20000) : '-'}</span>
@@ -287,7 +311,6 @@ export default function CheckoutPage() {
                         <h3 className="font-bold text-foreground text-sm">{item.name}</h3>
                         <span className="font-bold text-foreground text-sm">{formatRupiah(item.price * item.quantity)}</span>
                       </div>
-                      {/* PENGHAPUSAN TEKS WARNA DI SINI */}
                       <p className="text-xs text-foreground/60 mb-2">Size: {item.selectedSize}</p>
                       <span className="text-xs font-bold bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md text-foreground">Qty: {item.quantity}</span>
                     </div>
@@ -306,20 +329,10 @@ export default function CheckoutPage() {
                 <span className="text-slate-400">Subtotal Produk</span>
                 <span className="font-medium text-white">{formatRupiah(subtotal)}</span>
               </div>
-              
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-400">Pajak PPN (10%)</span>
-                <span className="font-medium text-white">{formatRupiah(tax)}</span>
-              </div>
 
               <div className="flex justify-between text-sm">
                 <span className="text-slate-400">Pengiriman {baseShipping > 0 ? (shippingType === 'reguler' ? '(Reg.)' : '(Eks.)') : ''}</span>
                 <span className="font-medium text-white">{formatRupiah(shippingCost)}</span>
-              </div>
-              
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-400">Biaya Layanan DOKU</span>
-                <span className="font-medium text-white">{formatRupiah(adminFee)}</span>
               </div>
               
               <div className="pt-4 border-t border-slate-700 flex justify-between items-end">

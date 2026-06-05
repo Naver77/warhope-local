@@ -18,28 +18,28 @@ export default function AddToCartButton({ product }) {
   // AMBIL STATUS SEBELUM DI-KLIK
   const isWished = isInWishlist(product.id);
 
-  // Logika Cerdas: Cek Ketersediaan Stok
+  // Logika Cerdas: Cek Ketersediaan Stok dari kolom 'stock'
   const { availableSize, hasStock } = useMemo(() => {
     let sizeName = "All Size";
-    let isAvailable = true;
+    
+    // Cek apakah stok di tabel products lebih dari 0
+    const isAvailable = product.stock > 0; 
 
+    // Mencari varian ukuran pertama untuk dimasukkan otomatis ke keranjang
     if (product.sizes) {
       if (Array.isArray(product.sizes)) {
         sizeName = product.sizes[0] || "All Size";
       } else {
         const parsedSizes = typeof product.sizes === 'string' ? JSON.parse(product.sizes) : product.sizes;
-        const activeSizes = Object.entries(parsedSizes)
-          .filter(([, data]) => data.active && data.stock > 0);
+        const activeSizes = Object.entries(parsedSizes).filter(([, data]) => data.active);
           
         if (activeSizes.length > 0) {
-          sizeName = activeSizes[0][0]; // Ambil ukuran pertama yang ada stok
-        } else {
-          isAvailable = false; // Habis total
+          sizeName = activeSizes[0][0]; 
         }
       }
     }
     return { availableSize: sizeName, hasStock: isAvailable };
-  }, [product.sizes]);
+  }, [product.sizes, product.stock]); // pastikan product.stock masuk dependency
 
   const handleAdd = (e) => {
     e.preventDefault(); 
