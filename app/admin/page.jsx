@@ -135,14 +135,6 @@ export default function AdminDashboard() {
             />
           )}
 
-          {activeTab === "products" && (
-            <ProductsTab
-              products={products}
-              isLoadingProducts={isLoadingProducts}
-              fetchProducts={fetchProducts}
-            />
-          )}
-
           {/* TAMPILAN JIKA TAB = REVIEWS */}
           {activeTab === "reviews" && <ProductReviews />}
         </main>

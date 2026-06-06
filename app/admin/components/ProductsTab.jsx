@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+// PERBAIKAN 1: Import useDeferredValue dari React
+import React, { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import { 
   Search, Plus, Edit, Trash2, AlertTriangle, 
   ChevronLeft, ChevronRight, Tags, Filter, ChevronDown 
@@ -16,6 +17,9 @@ export default function ProductsTab({ products, isLoadingProducts, fetchProducts
   
   // State Pencarian, Filter & Paging
   const [searchProductTerm, setSearchProductTerm] = useState("");
+  // PERBAIKAN 2: Gunakan Deferred Value agar ketikan di kolom pencarian tidak ngelag
+  const deferredSearchTerm = useDeferredValue(searchProductTerm);
+  
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
@@ -27,10 +31,7 @@ export default function ProductsTab({ products, isLoadingProducts, fetchProducts
   const [modalMode, setModalMode] = useState('add');
   const [editingProduct, setEditingProduct] = useState(null);
 
-  // State Modal Kategori Baru
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
-  
-  // State untuk Dropdown Filter & Form (Ditarik secara independen)
   const [dbCategories, setDbCategories] = useState([]);
 
   const fetchDBCategories = async () => {
@@ -44,9 +45,10 @@ export default function ProductsTab({ products, isLoadingProducts, fetchProducts
 
   const filteredProducts = useMemo(() => {
     return products.filter(product => {
+      // Menggunakan deferredSearchTerm untuk filter, bukan state asli yang berubah tiap milidetik
       const matchesSearch = 
-        product.name.toLowerCase().includes(searchProductTerm.toLowerCase()) || 
-        product.id.toLowerCase().includes(searchProductTerm.toLowerCase());
+        product.name.toLowerCase().includes(deferredSearchTerm.toLowerCase()) || 
+        product.id.toLowerCase().includes(deferredSearchTerm.toLowerCase());
       
       const matchesCategory = 
         selectedCategory === "All" || 
@@ -54,11 +56,12 @@ export default function ProductsTab({ products, isLoadingProducts, fetchProducts
 
       return matchesSearch && matchesCategory;
     });
-  }, [products, searchProductTerm, selectedCategory]);
+  }, [products, deferredSearchTerm, selectedCategory]);
 
+  // Reset page saat filter berubah
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchProductTerm, selectedCategory]);
+  }, [deferredSearchTerm, selectedCategory]);
 
   const totalPages = Math.ceil(filteredProducts.length / ITEMS_PER_PAGE) || 1;
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -68,7 +71,6 @@ export default function ProductsTab({ products, isLoadingProducts, fetchProducts
   const goToNextPage = () => setCurrentPage(prev => Math.min(prev + 1, totalPages));
   const goToPrevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
 
-  // Menggabungkan kategori dari DB dan kategori produk (untuk opsi form)
   const allCategories = useMemo(() => {
     const productCats = products.map(p => p.category).filter(Boolean);
     return [...new Set([...dbCategories, ...productCats])].sort();
@@ -163,8 +165,9 @@ export default function ProductsTab({ products, isLoadingProducts, fetchProducts
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-4">
                         <div className="w-12 h-12 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 shrink-0 border border-slate-200 dark:border-slate-700">
+                          {/* PERBAIKAN 3: loading="lazy" agar network tidak macet mengunduh foto yang belum terlihat */}
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={product.image} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                          <img src={product.image} alt={product.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                         </div>
                         <div>
                           <p className="font-bold text-foreground truncate max-w-50 sm:max-w-xs">{product.name}</p>
@@ -215,7 +218,6 @@ export default function ProductsTab({ products, isLoadingProducts, fetchProducts
         )}
       </div>
 
-      {/* PEMANGGILAN KOMPONEN MODAL DARI FILE EKSTERNAL */}
       <ProductFormModal 
         isOpen={isModalOpen}
         onClose={handleCloseModal}
@@ -232,7 +234,6 @@ export default function ProductsTab({ products, isLoadingProducts, fetchProducts
         onCategoryUpdated={fetchDBCategories}
       />
 
-      {/* MODAL HAPUS PRODUK */}
       {deleteModal.isOpen && (
         <div className="fixed inset-0 z-130 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
           <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-3xl shadow-2xl p-6 text-center animate-in zoom-in-95 duration-200">

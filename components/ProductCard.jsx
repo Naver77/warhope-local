@@ -39,13 +39,6 @@ export default function ProductCard({ product }) {
           <p className="text-xl font-black text-foreground mt-2">
             {formatRupiah(product.price)}
           </p>
-          <p className="text-xs font-medium mt-1 mb-2">
-            {isOutOfStock ? (
-               <span className="text-red-500 font-bold">Tidak Tersedia</span>
-            ) : (
-               <span className="text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">Tersisa: {globalStock} pcs</span>
-            )}
-          </p>
         </Link>
 
         {/* Jika stok habis, sembunyikan tombol Add To Cart */}

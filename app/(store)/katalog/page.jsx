@@ -6,19 +6,15 @@ import ProductCard from '../../../components/ProductCard';
 import { useProductStore } from '../../../store/productStore';
 
 export default function KatalogPage() {
-  // 1. Ambil data dan status loading langsung dari Global Cache (Zustand)
   const { products, isLoading, fetchProducts } = useProductStore();
   
-  // 2. State lokal hanya untuk inputan user (UI)
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Semua');
 
-  // 3. Tarik data (Akan instan 0 detik jika data sudah ada di cache)
   useEffect(() => {
     fetchProducts();
   }, [fetchProducts]);
 
-  // 4. SOLUSI ESLINT: Gunakan useMemo untuk derivasi data (Tanpa useEffect & useState ganda)
   const categories = useMemo(() => {
     if (!products) return ['Semua'];
     return ['Semua', ...new Set(products.map(p => p.category).filter(Boolean))].sort();
@@ -98,7 +94,7 @@ export default function KatalogPage() {
           <p className="text-foreground/60 font-medium">Memuat koleksi terbaru...</p>
         </div>
       ) : filteredProducts.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8 animate-in fade-in duration-700">
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6 md:gap-8 animate-in fade-in duration-700">
           {filteredProducts.map((product) => (
             <ProductCard key={product.id} product={product} />
           ))}

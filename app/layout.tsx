@@ -1,12 +1,17 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Plus_Jakarta_Sans } from 'next/font/google';
 import "./globals.css";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import ToastProvider from "../components/ToastProvider";
 import AuthListener from "../components/AuthListener"; // IMPORT LISTENER BARU
 
-const inter = Inter({ subsets: ["latin"] });
+// 2. Konfigurasi Font
+const modernFont = Plus_Jakarta_Sans({ 
+  subsets: ['latin'],
+  display: 'swap',
+  // weight: ['400', '500', '600', '700', '800'], // (Opsional) Jika ingin dilimitasi ketebalannya
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://warhope-ecom.vercel.app'), 
@@ -70,7 +75,7 @@ export default function RootLayout({
     <html lang="id" suppressHydrationWarning className="scroll-smooth" data-scroll-behavior="smooth"> 
       <body 
         suppressHydrationWarning 
-        className={`${inter.className} bg-background text-foreground antialiased selection:bg-blue-600 selection:text-white`}
+        className={`${modernFont.className} bg-background text-foreground antialiased selection:bg-blue-600 selection:text-white`}
       >
         {/* LISTENER DILETAKKAN DI SINI, DI LUAR STRUKTUR VISUAL */}
         <AuthListener />
