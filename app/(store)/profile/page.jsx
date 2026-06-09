@@ -21,6 +21,7 @@ import {
   ShieldCheck, 
   ArrowRight,
   AlertCircle,
+  Save
 } from "lucide-react";
 
 import { useAuthStore } from "../../../store/authStore";
@@ -35,17 +36,27 @@ const PAYMENT_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 export default function ProfilePage() {
   const router = useRouter();
 
-  const { user, isInitialized, checkAuth, logout } = useAuthStore();
+  const { user, isInitialized, checkAuth, logout, updateUserProfile } = useAuthStore();
   const addToast = useToastStore((state) => state.addToast);
   const clearCart = useCartStore((state) => state.clearCart);
   const clearWishlist = useWishlistStore((state) => state.clearWishlist);
 
   const [isClient, setIsClient] = useState(false);
   const [activeTab, setActiveTab] = useState("orders");
+  
+  // STATE PESANAN
   const [orders, setOrders] = useState([]);
   const [isLoadingOrders, setIsLoadingOrders] = useState(true);
 
-  // STATE BARU: CUSTOM MODAL UNTUK LOGOUT & BATAL PESANAN
+  // STATE FORM PROFIL
+  const [profileForm, setProfileForm] = useState({
+    name: "",
+    phone_number: "",
+    address: ""
+  });
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  // STATE CUSTOM MODAL
   const [confirmModal, setConfirmModal] = useState({
     isOpen: false,
     type: null,
@@ -64,21 +75,31 @@ export default function ProfilePage() {
   }, [checkAuth]);
 
   useEffect(() => {
-    if (isClient && isInitialized && !user) {
-      addToast("Silakan masuk (login) untuk mengakses profil Anda.", "error");
-      router.push("/auth/login");
+    if (isClient && isInitialized) {
+      if (!user) {
+        addToast("Silakan masuk (login) untuk mengakses profil Anda.", "error");
+        router.push("/auth/login");
+      } else {
+        // Inisialisasi data form saat user terdeteksi
+        setProfileForm({
+          name: user.name || "",
+          phone_number: user.phone_number || "",
+          address: user.address || ""
+        });
+      }
     }
   }, [isClient, isInitialized, user, router, addToast]);
 
   useEffect(() => {
     const fetchMyOrders = async () => {
-      if (!user?.email) return;
+      // Menggunakan user.id agar lebih presisi sesuai pembaruan DB
+      if (!user?.id) return;
       setIsLoadingOrders(true);
       try {
         const { data, error } = await supabase
           .from("orders")
           .select("*")
-          .eq("customer_email", user.email)
+          .eq("user_id", user.id) // Diubah dari customer_email ke user_id
           .order("created_at", { ascending: false });
 
         if (error) throw error;
@@ -89,7 +110,7 @@ export default function ProfilePage() {
         const now = new Date().getTime();
         fetchedOrders = await Promise.all(
           fetchedOrders.map(async (order) => {
-            if (order.status === "PENDING") {
+            if (order.status === "PENDING_PAYMENT" || order.status === "PENDING") {
               const orderTime = new Date(order.created_at).getTime();
               if (now - orderTime > PAYMENT_TIMEOUT_MS) {
                 await supabase
@@ -124,7 +145,44 @@ export default function ProfilePage() {
     }
   }, [isClient, user, addToast]);
 
-  // 1. FUNGSI PEMICU MODAL LOGOUT
+  // --- FUNGSI UPDATE PROFIL ---
+  const handleProfileChange = (e) => {
+    setProfileForm({ ...profileForm, [e.target.name]: e.target.value });
+  };
+
+  const handleSaveProfile = async () => {
+    if (!user?.id) return;
+    setIsSavingProfile(true);
+
+    try {
+      const { error } = await supabase
+        .from("users")
+        .update({
+          name: profileForm.name,
+          phone_number: profileForm.phone_number,
+          address: profileForm.address
+        })
+        .eq("id", user.id);
+
+      if (error) throw error;
+
+      // Update state global di Zustand agar UI langsung berubah tanpa refresh
+      updateUserProfile({
+        name: profileForm.name,
+        phone_number: profileForm.phone_number,
+        address: profileForm.address
+      });
+
+      addToast("Profil berhasil diperbarui!", "success");
+    } catch (error) {
+      console.error("Error update profil:", error);
+      addToast("Gagal memperbarui profil.", "error");
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  // --- FUNGSI MODAL ---
   const promptLogout = () => {
     setConfirmModal({
       isOpen: true,
@@ -134,7 +192,6 @@ export default function ProfilePage() {
     });
   };
 
-  // 2. FUNGSI PEMICU MODAL BATAL PESANAN
   const promptCancelOrder = (orderId, invoiceNumber) => {
     setConfirmModal({
       isOpen: true,
@@ -145,7 +202,6 @@ export default function ProfilePage() {
     });
   };
 
-  // Tambahkan prompt baru untuk Pesanan Selesai
   const promptCompleteOrder = (orderId, invoiceNumber) => {
     setConfirmModal({
       isOpen: true,
@@ -175,7 +231,6 @@ export default function ProfilePage() {
           .eq("id", orderId);
         if (error) throw error;
 
-        // KEMBALIKAN STOK!
         let itemsToRestore =
           typeof targetOrder.items === "string"
             ? JSON.parse(targetOrder.items)
@@ -188,13 +243,7 @@ export default function ProfilePage() {
           ),
         );
         addToast(`Pesanan berhasil dibatalkan. Stok dikembalikan.`, "success");
-        setConfirmModal({
-          isOpen: false,
-          type: null,
-          payload: null,
-          title: "",
-          message: "",
-        });
+        setConfirmModal({ ...confirmModal, isOpen: false });
       } catch {
         addToast("Gagal membatalkan pesanan.", "error");
       } finally {
@@ -219,13 +268,7 @@ export default function ProfilePage() {
           `Pesanan Selesai! Silakan berikan ulasan Anda di halaman produk.`,
           "success",
         );
-        setConfirmModal({
-          isOpen: false,
-          type: null,
-          payload: null,
-          title: "",
-          message: "",
-        });
+        setConfirmModal({ ...confirmModal, isOpen: false });
       } catch {
         addToast("Gagal menyelesaikan pesanan.", "error");
       } finally {
@@ -235,27 +278,17 @@ export default function ProfilePage() {
   };
 
   const formatRupiah = (number) =>
-    new Intl.NumberFormat("id-ID", {
-      style: "currency",
-      currency: "IDR",
-      minimumFractionDigits: 0,
-    }).format(number);
+    new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(number);
+  
   const formatDate = (dateString) =>
     new Date(dateString).toLocaleDateString("id-ID", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
+      year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit"
     });
+  
   const getDueDate = (createdAt) => {
     const date = new Date(new Date(createdAt).getTime() + PAYMENT_TIMEOUT_MS);
     return date.toLocaleDateString("id-ID", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
+      year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"
     });
   };
 
@@ -316,8 +349,7 @@ export default function ProfilePage() {
     }
   };
 
-  if (!isClient || !isInitialized || !user)
-    return <div className="min-h-screen bg-background pt-8 pb-24"></div>;
+  if (!isClient || !isInitialized || !user) return <div className="min-h-screen bg-background pt-8 pb-24"></div>;
   if (user.role === "admin") {
     router.push("/admin");
     return null;
@@ -361,7 +393,6 @@ export default function ProfilePage() {
               <Settings className="w-5 h-5" /> Pengaturan
             </button>
             <div className="h-px bg-slate-100 dark:bg-slate-800 my-2"></div>
-            {/* GANTI ONCLICK MENJADI CUSTOM PROMPT */}
             <button
               onClick={promptLogout}
               className="flex items-center gap-3 px-4 py-3 rounded-2xl font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all w-full text-left"
@@ -373,7 +404,10 @@ export default function ProfilePage() {
 
         {/* KOLOM KANAN: Konten Tab */}
         <div className="lg:col-span-9">
-          {/* TAB PESANAN SAYA */}
+          
+          {/* ========================================================
+              TAB PESANAN SAYA
+          ======================================================== */}
           {activeTab === "orders" && (
             <div className="animate-in fade-in duration-500">
               <h2 className="text-xl font-bold tracking-tight text-foreground mb-6">
@@ -396,11 +430,10 @@ export default function ProfilePage() {
                     Belum ada pesanan
                   </h3>
                   <p className="text-foreground/60 mb-8 max-w-sm">
-                    Anda belum melakukan transaksi apa pun. Yuk, wujudkan gaya
-                    urban Anda sekarang!
+                    Anda belum melakukan transaksi apa pun. Yuk, wujudkan gaya urban Anda sekarang!
                   </p>
                   <Link
-                    href="/#katalog"
+                    href="/katalog"
                     className="bg-blue-600 text-white px-8 py-3 rounded-full font-bold hover:bg-blue-700 transition-all active:scale-95"
                   >
                     Mulai Belanja
@@ -411,16 +444,13 @@ export default function ProfilePage() {
                   {orders.map((order) => {
                     let items = [];
                     try {
-                      items =
-                        typeof order.items === "string"
-                          ? JSON.parse(order.items)
-                          : order.items;
+                      items = typeof order.items === "string" ? JSON.parse(order.items) : order.items;
                     } catch (err) {
                       console.error("Parse items error:", err);
                     }
 
-                    const isPending = order.status === "PENDING";
-                    const isDikirim = order.status === "DIKIRIM";
+                    const isPending = order.status === "PENDING" || order.status === "PENDING_PAYMENT";
+                    const isDikirim = order.status === "DIKIRIM" || order.status === "SHIPPED";
 
                     return (
                       <div
@@ -431,10 +461,7 @@ export default function ProfilePage() {
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-100 dark:border-slate-800 pb-4 mb-4 gap-4">
                           <div>
                             <p className="text-xs text-foreground/50 uppercase tracking-widest mb-1">
-                              Tanggal Pesanan:{" "}
-                              <span className="font-bold text-foreground/80">
-                                {formatDate(order.created_at)}
-                              </span>
+                              Tanggal Pesanan: <span className="font-bold text-foreground/80">{formatDate(order.created_at)}</span>
                             </p>
                             <div className="flex flex-wrap items-center gap-3">
                               <h3 className="font-black text-foreground">
@@ -456,72 +483,50 @@ export default function ProfilePage() {
                         {/* List Barang */}
                         <div className="space-y-4">
                           {items.map((item, idx) => (
-                            <div
-                              key={idx}
-                              className="flex items-center gap-4 bg-slate-50/50 dark:bg-slate-800/20 p-3 rounded-2xl border border-transparent dark:border-slate-800/50"
-                            >
+                            <div key={idx} className="flex items-center gap-4 bg-slate-50/50 dark:bg-slate-800/20 p-3 rounded-2xl border border-transparent dark:border-slate-800/50">
                               <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-xl overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700">
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={item.image}
-                                  alt={item.name}
-                                  className="w-full h-full object-cover"
-                                />
+                                <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
                               </div>
                               <div className="flex-1">
-                                <h4 className="font-bold text-foreground text-sm line-clamp-1">
-                                  {item.name}
-                                </h4>
+                                <h4 className="font-bold text-foreground text-sm line-clamp-1">{item.name}</h4>
                                 <p className="text-[11px] text-foreground/60 mt-1 uppercase tracking-widest font-bold">
                                   Size: {item.selectedSize}
                                 </p>
                               </div>
                               <div className="text-right shrink-0">
-                                <p className="text-sm font-bold text-foreground">
-                                  {item.quantity}x
-                                </p>
+                                <p className="text-sm font-bold text-foreground">{item.quantity}x</p>
                                 <p className="text-xs font-bold text-foreground/60 mt-1">
-                                  {formatRupiah(item.price)}
+                                  {/* Gunakan recordedPrice jika ada (dari checkout diskon), jika tidak fallback ke price */}
+                                  {formatRupiah(item.recordedPrice ?? item.final_price ?? item.price)}
                                 </p>
                               </div>
                             </div>
                           ))}
                         </div>
 
-                        {/* Aksi & Info Kedaluwarsa untuk PENDING */}
+                        {/* Aksi untuk PENDING */}
                         {isPending && (
                           <div className="mt-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-amber-50 dark:bg-amber-900/10 p-4 rounded-2xl border border-amber-100 dark:border-amber-900/20">
                             <div>
                               <p className="text-xs font-bold text-amber-800 dark:text-amber-500 uppercase tracking-widest flex items-center gap-1 mb-1">
-                                <Clock className="w-3 h-3" /> Batas Waktu
-                                Pembayaran
+                                <Clock className="w-3 h-3" /> Batas Waktu Pembayaran
                               </p>
                               <p className="text-sm font-black text-amber-900 dark:text-amber-400">
                                 {getDueDate(order.created_at)} WIB
                               </p>
                             </div>
                             <div className="flex items-center gap-3 w-full sm:w-auto">
-                              {/* GANTI ONCLICK MENJADI CUSTOM PROMPT */}
                               <button
-                                onClick={() =>
-                                  promptCancelOrder(
-                                    order.id,
-                                    order.invoice_number,
-                                  )
-                                }
+                                onClick={() => promptCancelOrder(order.id, order.invoice_number)}
                                 className="flex-1 sm:flex-none bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 px-5 py-2.5 rounded-full font-bold text-sm hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-all"
                               >
                                 Batalkan
                               </button>
                               <button
                                 onClick={() => {
-                                  if (order.payment_url)
-                                    window.location.href = order.payment_url;
-                                  else
-                                    addToast(
-                                      "Link pembayaran tidak ditemukan. Silakan hubungi CS Warhope.",
-                                      "error",
-                                    );
+                                  if (order.payment_url) window.location.href = order.payment_url;
+                                  else addToast("Link pembayaran tidak ditemukan. Silakan hubungi CS Warhope.", "error");
                                 }}
                                 className="flex-1 sm:flex-none bg-blue-600 text-white px-5 py-2.5 rounded-full font-bold text-sm hover:bg-blue-700 transition-all shadow-md shadow-blue-600/20 flex items-center justify-center gap-2"
                               >
@@ -531,33 +536,21 @@ export default function ProfilePage() {
                           </div>
                         )}
 
-                        {/* INFO RESI UNTUK PESANAN DIKIRIM */}
-                        {(order.status === "SHIPPED" ||
-                          order.status === "DIKIRIM") && (
-                          <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                            {/* ... (Logika Tampilan Resi tetap sama) ... */}
-
+                        {/* Aksi untuk DIKIRIM */}
+                        {isDikirim && (
+                          <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-4">
                             <button
-                              onClick={() =>
-                                promptCompleteOrder(
-                                  order.id,
-                                  order.invoice_number,
-                                )
-                              }
+                              onClick={() => promptCompleteOrder(order.id, order.invoice_number)}
                               className="w-full sm:w-auto bg-green-600 text-white px-6 py-3 rounded-full font-bold text-sm hover:bg-green-700 transition-all shadow-md active:scale-95"
                             >
-                              <CheckCircle className="w-4 h-4 inline-block mr-2" />{" "}
-                              Pesanan Diterima
+                              <CheckCircle className="w-4 h-4 inline-block mr-2" /> Pesanan Diterima
                             </button>
                           </div>
                         )}
 
                         {order.status === "COMPLETED" && (
                           <div className="mt-6 pt-5 border-t border-slate-100 flex justify-end">
-                            <Link
-                              href="/katalog"
-                              className="text-sm font-bold text-blue-600 hover:underline flex items-center gap-2"
-                            >
+                            <Link href="/katalog" className="text-sm font-bold text-blue-600 hover:underline flex items-center gap-2">
                               Beli Lagi <ArrowRight className="w-4 h-4" />
                             </Link>
                           </div>
@@ -570,13 +563,16 @@ export default function ProfilePage() {
             </div>
           )}
 
-          {/* TAB PENGATURAN AKUN */}
+          {/* ========================================================
+              TAB PENGATURAN AKUN
+          ======================================================== */}
           {activeTab === "settings" && (
             <div className="animate-in fade-in duration-500">
               <h2 className="text-xl font-bold tracking-tight text-foreground mb-6">
                 Pengaturan Akun
               </h2>
               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 md:p-8 shadow-sm space-y-6">
+                
                 <div>
                   <label className="text-xs font-bold text-foreground/60 uppercase tracking-widest block mb-2">
                     Nama Lengkap
@@ -585,7 +581,9 @@ export default function ProfilePage() {
                     <User className="w-5 h-5 text-slate-400 mr-3" />
                     <input
                       type="text"
-                      defaultValue={user.name || ""}
+                      name="name"
+                      value={profileForm.name}
+                      onChange={handleProfileChange}
                       className="bg-transparent w-full outline-none text-foreground text-sm font-medium"
                     />
                   </div>
@@ -605,8 +603,7 @@ export default function ProfilePage() {
                     />
                   </div>
                   <p className="text-[10px] text-slate-500 mt-2">
-                    *Email terikat dengan identitas masuk dan tidak dapat
-                    diubah.
+                    *Email terikat dengan identitas masuk dan tidak dapat diubah.
                   </p>
                 </div>
 
@@ -618,7 +615,10 @@ export default function ProfilePage() {
                     <Phone className="w-5 h-5 text-slate-400 mr-3" />
                     <input
                       type="tel"
-                      placeholder="081234567890"
+                      name="phone_number"
+                      value={profileForm.phone_number}
+                      onChange={handleProfileChange}
+                      placeholder="Contoh: 081234567890"
                       className="bg-transparent w-full outline-none text-foreground text-sm font-medium"
                     />
                   </div>
@@ -632,15 +632,26 @@ export default function ProfilePage() {
                     <MapPin className="w-5 h-5 text-slate-400 mr-3 mt-0.5" />
                     <textarea
                       rows={3}
-                      placeholder="Masukkan alamat lengkap Anda..."
+                      name="address"
+                      value={profileForm.address}
+                      onChange={handleProfileChange}
+                      placeholder="Masukkan alamat lengkap (Jalan, RT/RW, Kelurahan, Kecamatan, Kota, Kode Pos)"
                       className="bg-transparent w-full outline-none text-foreground text-sm font-medium resize-none"
                     ></textarea>
                   </div>
                 </div>
 
                 <div className="pt-6 border-t border-slate-100 dark:border-slate-800 flex justify-end">
-                  <button className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-full font-bold transition-all shadow-md active:scale-95">
-                    Simpan Perubahan
+                  <button 
+                    onClick={handleSaveProfile}
+                    disabled={isSavingProfile}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-full font-bold transition-all shadow-md active:scale-95 disabled:opacity-70 flex items-center gap-2"
+                  >
+                    {isSavingProfile ? (
+                      <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Menyimpan...</>
+                    ) : (
+                      <><Save className="w-4 h-4" /> Simpan Perubahan</>
+                    )}
                   </button>
                 </div>
               </div>
@@ -653,14 +664,16 @@ export default function ProfilePage() {
           MODAL CUSTOM UNTUK KONFIRMASI LOGOUT & BATAL PESANAN
       ======================================================== */}
       {confirmModal.isOpen && (
-        <div className="fixed inset-0 z-130 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6 text-center">
               <div
-                className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${confirmModal.type === "logout" ? "bg-amber-100 dark:bg-amber-900/30 text-amber-600" : "bg-red-100 dark:bg-red-900/30 text-red-600"}`}
+                className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${confirmModal.type === "logout" ? "bg-amber-100 dark:bg-amber-900/30 text-amber-600" : confirmModal.type === "complete_order" ? "bg-green-100 dark:bg-green-900/30 text-green-600" : "bg-red-100 dark:bg-red-900/30 text-red-600"}`}
               >
                 {confirmModal.type === "logout" ? (
                   <LogOut className="w-8 h-8" />
+                ) : confirmModal.type === "complete_order" ? (
+                  <CheckCircle className="w-8 h-8" />
                 ) : (
                   <AlertCircle className="w-8 h-8" />
                 )}
@@ -674,15 +687,7 @@ export default function ProfilePage() {
 
               <div className="flex gap-3 w-full">
                 <button
-                  onClick={() =>
-                    setConfirmModal({
-                      isOpen: false,
-                      type: null,
-                      payload: null,
-                      title: "",
-                      message: "",
-                    })
-                  }
+                  onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })}
                   className="flex-1 py-3 rounded-full font-bold bg-slate-100 dark:bg-slate-800 text-foreground hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                 >
                   Batal
@@ -690,7 +695,7 @@ export default function ProfilePage() {
                 <button
                   onClick={executeConfirmAction}
                   disabled={isProcessingAction}
-                  className={`flex-1 py-3 rounded-full font-bold text-white transition-colors disabled:opacity-70 shadow-lg ${confirmModal.type === "logout" ? "bg-amber-600 hover:bg-amber-700 shadow-amber-600/20" : "bg-red-600 hover:bg-red-700 shadow-red-600/20"}`}
+                  className={`flex-1 py-3 rounded-full font-bold text-white transition-colors disabled:opacity-70 shadow-lg ${confirmModal.type === "logout" ? "bg-amber-600 hover:bg-amber-700 shadow-amber-600/20" : confirmModal.type === "complete_order" ? "bg-green-600 hover:bg-green-700 shadow-green-600/20" : "bg-red-600 hover:bg-red-700 shadow-red-600/20"}`}
                 >
                   {isProcessingAction ? "Memproses..." : "Ya, Lanjutkan"}
                 </button>

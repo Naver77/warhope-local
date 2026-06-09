@@ -4,36 +4,24 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Script from 'next/script';
 import { useRouter } from 'next/navigation';
-import { Truck, ShoppingBag, ShieldCheck, ArrowRight, MapPin, ReceiptText } from 'lucide-react';
+import { Truck, ShoppingBag, ShieldCheck, ArrowRight, MapPin, ReceiptText, Tag } from 'lucide-react';
 import { useCartStore } from '../../../store/cartStore';
 import { useToastStore } from '../../../store/toastStore';
 import { useAuthStore } from '../../../store/authStore';
-import { createOrder } from '../../../lib/api'; // getProvinces dihapus
-
-// DATA ONGKIR STATIS (Tanpa perlu memanggil API)
-const PROVINCES = [
-  { id: 1, name: 'DKI Jakarta', cost: 10000, etd: '1-2 Hari' },
-  { id: 2, name: 'Banten', cost: 12000, etd: '1-2 Hari' },
-  { id: 3, name: 'Jawa Barat', cost: 15000, etd: '1-2 Hari' },
-  { id: 4, name: 'Jawa Tengah', cost: 20000, etd: '2-3 Hari' },
-  { id: 5, name: 'DI Yogyakarta', cost: 20000, etd: '2-3 Hari' },
-  { id: 6, name: 'Jawa Timur', cost: 25000, etd: '2-4 Hari' },
-  { id: 7, name: 'Bali', cost: 35000, etd: '3-5 Hari' },
-  { id: 8, name: 'Sumatera', cost: 45000, etd: '3-6 Hari' },
-  { id: 9, name: 'Kalimantan', cost: 55000, etd: '4-7 Hari' },
-  { id: 10, name: 'Sulawesi', cost: 60000, etd: '4-8 Hari' },
-  { id: 11, name: 'Papua & Maluku', cost: 80000, etd: '5-10 Hari' }
-];
+import { createOrder, getProvinces } from '../../../lib/api'; // Mengaktifkan kembali getProvinces
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { items, getTotalPrice, clearCart } = useCartStore();
+  const { items, clearCart } = useCartStore(); 
   const addToast = useToastStore((state) => state.addToast);
   const { user, isInitialized, checkAuth } = useAuthStore();
   
   const [isClient, setIsClient] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   
+  // State untuk menampung data provinsi dari database
+  const [provinces, setProvinces] = useState([]);
+
   const [formData, setFormData] = useState({
     firstName: '', lastName: '', email: '', phone: '', address: '', city: '', state: '', zip: ''
   });
@@ -42,14 +30,22 @@ export default function CheckoutPage() {
   const [estimatedTime, setEstimatedTime] = useState('');
   const [shippingType, setShippingType] = useState('reguler'); 
 
+  // Mengambil sesi otentikasi serta data provinsi saat halaman dimuat
   useEffect(() => {
-    const timer = setTimeout(() => {
+    const initCheckout = async () => {
       setIsClient(true);
-      checkAuth();
-    }, 0);
-    return () => clearTimeout(timer);
+      await checkAuth();
+      try {
+        const data = await getProvinces();
+        setProvinces(data || []);
+      } catch (error) {
+        console.error("Gagal mengambil data provinsi:", error);
+      }
+    };
+    initCheckout();
   }, [checkAuth]);
 
+  // UPDATE: AUTO-FILL DATA DARI PROFIL (Berdasarkan Tabel public.users)
   useEffect(() => {
     if (isClient && isInitialized) {
       if (!user) {
@@ -61,14 +57,37 @@ export default function CheckoutPage() {
           ...prev,
           email: user.email || '',
           firstName: nameParts[0] || '',
-          lastName: nameParts.slice(1).join(' ') || ''
+          lastName: nameParts.slice(1).join(' ') || '',
+          phone: user.phone_number || '', 
+          address: user.address || ''     
         }));
       }
     }
   }, [isClient, isInitialized, user, router, addToast]);
 
-  // KALKULASI BERSIH (Tanpa Pajak & Tanpa Biaya Admin)
-  const subtotal = getTotalPrice();
+  // UPDATE: KALKULASI DISKON PRESISI
+  const calculateTotals = () => {
+    let originalTotal = 0;
+    let finalTotal = 0;
+    
+    items.forEach(item => {
+      const origPrice = Number(item.price) || 0;
+      const finPrice = Number(item.finalPrice ?? item.final_price ?? origPrice);
+      
+      originalTotal += origPrice * item.quantity;
+      finalTotal += finPrice * item.quantity;
+    });
+
+    return { 
+      originalTotal, 
+      finalTotal, 
+      totalDiscount: originalTotal - finalTotal 
+    };
+  };
+
+  const { originalTotal, finalTotal, totalDiscount } = calculateTotals();
+
+  const subtotal = finalTotal;
   const shippingCost = baseShipping === 0 ? 0 : (shippingType === 'reguler' ? baseShipping : baseShipping + 20000);
   const grandTotal = subtotal + shippingCost;
 
@@ -76,16 +95,17 @@ export default function CheckoutPage() {
 
   const handleInputChange = (e) => setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
 
-  // LOGIKA ONGKIR STATIS
+  // LOGIKA PENGAMBILAN ONGKIR BERDASARKAN PROVINSI DATABASE
   const handleProvinceChange = (e) => {
     const provName = e.target.value;
-    const selectedProv = PROVINCES.find(p => p.name === provName);
+    // Mencari data provinsi berdasarkan nama dari state dinamis
+    const selectedProv = provinces.find(p => p.name === provName);
     
     setFormData(prev => ({ ...prev, state: provName }));
     
     if (selectedProv) {
-      setBaseShipping(selectedProv.cost);
-      setEstimatedTime(selectedProv.etd);
+      setBaseShipping(Number(selectedProv.cost) || 0);
+      setEstimatedTime(selectedProv.etd || '1-3 Hari');
     } else {
       setBaseShipping(0);
       setEstimatedTime('');
@@ -125,18 +145,25 @@ export default function CheckoutPage() {
         addToast(`Mencatat pesanan & memotong stok sementara...`, 'info');
         
         const fullAddress = `${formData.address}, ${formData.city}, Provinsi ${formData.state} ${formData.zip}`;
+        
+        const itemsWithFinalPrice = items.map(item => ({
+          ...item,
+          recordedPrice: item.finalPrice ?? item.final_price ?? item.price
+        }));
+
         const orderPayload = {
           invoice_number: data.order_id || `INVWH${Date.now()}`,
           customer_name: `${formData.firstName} ${formData.lastName}`.trim(),
           customer_email: formData.email,
           customer_phone: formData.phone,
           shipping_address: fullAddress,
-          items: items, 
+          items: itemsWithFinalPrice, 
           total_amount: grandTotal,
           status: 'PENDING_PAYMENT',
+          user_id: user.id 
         };
 
-        await createOrder(orderPayload, items);
+        await createOrder(orderPayload, itemsWithFinalPrice);
         clearCart(); 
         
         if (typeof window !== 'undefined' && window.loadJokulCheckout) {
@@ -163,7 +190,7 @@ export default function CheckoutPage() {
         <ShoppingBag className="w-20 h-20 text-slate-200 dark:text-slate-800 mb-6" />
         <h2 className="text-2xl font-bold text-foreground mb-2">Keranjang Anda kosong</h2>
         <p className="text-foreground/60 mb-8">Anda harus memilih produk sebelum melakukan checkout.</p>
-        <Link href="/" className="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20 active:scale-95">
+        <Link href="/katalog" className="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20 active:scale-95">
           Kembali Berbelanja
         </Link>
       </main>
@@ -239,7 +266,7 @@ export default function CheckoutPage() {
                     className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all appearance-none cursor-pointer"
                   >
                     <option value="" disabled>Pilih Provinsi...</option>
-                    {PROVINCES.map((prov) => (
+                    {provinces.map((prov) => (
                       <option key={prov.id} value={prov.name}>{prov.name}</option>
                     ))}
                   </select>
@@ -300,16 +327,33 @@ export default function CheckoutPage() {
             <div className="space-y-6">
               {items.map((item) => {
                 const uniqueKey = `${item.id}-${item.selectedColor}-${item.selectedSize}`;
+                
+                const origPrice = Number(item.price) || 0;
+                const finPrice = Number(item.finalPrice ?? item.final_price ?? origPrice);
+                const hasDiscount = finPrice < origPrice;
+
                 return (
                   <div key={uniqueKey} className="flex items-center gap-6 group">
-                    <div className="w-20 h-20 rounded-xl overflow-hidden bg-slate-50 dark:bg-slate-900 shrink-0 border border-slate-100 dark:border-slate-700">
+                    <div className="w-20 h-20 rounded-xl overflow-hidden bg-slate-50 dark:bg-slate-900 shrink-0 border border-slate-100 dark:border-slate-700 relative">
+                      {hasDiscount && (
+                        <div className="absolute top-0 right-0 bg-red-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded-bl-lg z-10">SALE</div>
+                      )}
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img className="w-full h-full object-cover" alt={item.name} src={item.image} />
                     </div>
                     <div className="grow">
-                      <div className="flex justify-between mb-1">
-                        <h3 className="font-bold text-foreground text-sm">{item.name}</h3>
-                        <span className="font-bold text-foreground text-sm">{formatRupiah(item.price * item.quantity)}</span>
+                      <div className="flex justify-between mb-1 items-start gap-2">
+                        <h3 className="font-bold text-foreground text-sm line-clamp-2 pr-4">{item.name}</h3>
+                        <div className="text-right shrink-0">
+                          <span className="font-bold text-foreground text-sm block">
+                            {formatRupiah(finPrice * item.quantity)}
+                          </span>
+                          {hasDiscount && (
+                            <span className="text-[10px] font-medium text-slate-400 line-through decoration-red-500/50 block">
+                              {formatRupiah(origPrice * item.quantity)}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <p className="text-xs text-foreground/60 mb-2">Size: {item.selectedSize}</p>
                       <span className="text-xs font-bold bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md text-foreground">Qty: {item.quantity}</span>
@@ -325,10 +369,20 @@ export default function CheckoutPage() {
           <div className="bg-slate-900 dark:bg-slate-800 border border-transparent dark:border-slate-700 text-white p-8 rounded-3xl shadow-xl sticky top-28">
             <h2 className="text-xl font-bold tracking-tight mb-8">Total Pembayaran</h2>
             <div className="space-y-4 mb-8">
+              
               <div className="flex justify-between text-sm">
                 <span className="text-slate-400">Subtotal Produk</span>
-                <span className="font-medium text-white">{formatRupiah(subtotal)}</span>
+                <span className="font-medium text-white">{formatRupiah(originalTotal)}</span>
               </div>
+
+              {totalDiscount > 0 && (
+                <div className="flex justify-between text-sm items-center">
+                  <span className="text-red-400 flex items-center gap-1.5">
+                    <Tag className="w-3 h-3" /> Diskon Produk
+                  </span>
+                  <span className="font-bold text-red-400">-{formatRupiah(totalDiscount)}</span>
+                </div>
+              )}
 
               <div className="flex justify-between text-sm">
                 <span className="text-slate-400">Pengiriman {baseShipping > 0 ? (shippingType === 'reguler' ? '(Reg.)' : '(Eks.)') : ''}</span>

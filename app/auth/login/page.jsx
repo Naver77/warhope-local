@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { Mail, KeyRound, ArrowRight, ShieldCheck, ArrowLeft } from 'lucide-react';
 import { useAuthStore } from '../../../store/authStore';
 import { useToastStore } from '../../../store/toastStore';
-import { supabase } from '../../../lib/supabase'; // Pastikan path ini benar
+import { supabase } from '../../../lib/supabase'; 
 
 export default function LoginPage() {
   const router = useRouter();
@@ -45,7 +45,7 @@ export default function LoginPage() {
     setIsProcessing(true);
 
     try {
-      // 1. Tembak langsung ke pintu gerbang Supabase Auth
+      // 1. Tembak langsung ke Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: cleanEmail,
         password: cleanPassword,
@@ -53,27 +53,18 @@ export default function LoginPage() {
 
       if (authError) throw authError;
 
-      // 2. Jika berhasil lewat pintu gerbang, cek perannya di buku tamu (public.users)
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('name, role')
-        .eq('id', authData.user.id)
-        .single();
-
-      if (userError) throw userError;
-
-      const userRole = userData?.role || 'customer';
-      const userName = userData?.name || cleanEmail.split('@')[0];
-
-      // 3. Simpan state di Zustand agar UI berubah
-      login({ 
+      // 2. Jalankan logika login di authStore (Otomatis menarik data profil lengkap dari DB)
+      await login({ 
         id: authData.user.id,
-        name: userName, 
-        email: cleanEmail, 
-        role: userRole 
+        email: cleanEmail 
       });
 
-      addToast(userRole === 'admin' ? 'Autentikasi Admin berhasil.' : `Selamat datang, ${userName}!`, 'success');
+      // 3. Ambil state terbaru setelah proses sinkronisasi database selesai
+      const updatedUser = useAuthStore.getState().user;
+      const userRole = updatedUser?.role || 'customer';
+      const userName = updatedUser?.name || cleanEmail.split('@')[0];
+
+      addToast(userRole === 'admin' ? 'Autentikasi Admin berhasil.' : `Selamat datang kembali, ${userName}!`, 'success');
       
       // 4. Arahkan ke halaman yang sesuai
       if (userRole === 'admin') {

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { getUserProfile } from '../lib/api'; // Import fungsi fetch profil
 
 // KONFIGURASI KEDALUWARSA SESI (Dalam Milidetik)
 const ADMIN_TIMEOUT = 2 * 24 * 60 * 60 * 1000; // 2 Hari
@@ -12,13 +13,30 @@ export const useAuthStore = create(
       lastActive: null,
       isInitialized: false,
 
-      // Fungsi Login
-      login: (userData) => {
+      // Fungsi Login (Diperbarui untuk menarik data lengkap dari DB)
+      login: async (authUser) => {
+        // Ambil data detail profil dari tabel public.users berdasarkan authUser.id
+        const userProfile = await getUserProfile(authUser.id);
+        
+        // Gabungkan data dasar dari auth dengan data detail dari tabel users
+        const fullUserData = userProfile ? { ...authUser, ...userProfile } : authUser;
+
         set({ 
-          user: userData, 
+          user: fullUserData, 
           lastActive: Date.now(), 
           isInitialized: true 
         });
+      },
+
+      // Fungsi Update Profil Khusus (Digunakan setelah edit profil di UI)
+      updateUserProfile: (updatedData) => {
+        const currentUser = get().user;
+        if (currentUser) {
+          set({
+            user: { ...currentUser, ...updatedData },
+            lastActive: Date.now()
+          });
+        }
       },
 
       // Fungsi Logout (Pembersihan Data)
@@ -37,7 +55,7 @@ export const useAuthStore = create(
       },
 
       // Fungsi Cek Sesi (Sliding Expiration)
-      checkAuth: () => {
+      checkAuth: async () => {
         const { user, lastActive } = get();
         
         if (!user) {
@@ -52,6 +70,16 @@ export const useAuthStore = create(
           get().logout(); 
           console.log("🔒 Sesi telah berakhir karena tidak ada aktivitas.");
           return false; 
+        }
+
+        // Opsional: Sinkronisasi ulang profil setiap kali app dimuat (refresh)
+        // Ini memastikan jika admin/user edit data di DB, memori lokal HP terupdate.
+        if (user.id) {
+            const freshProfile = await getUserProfile(user.id);
+            if(freshProfile) {
+                set({ user: { ...user, ...freshProfile }, lastActive: now, isInitialized: true });
+                return true;
+            }
         }
 
         set({ lastActive: now, isInitialized: true });

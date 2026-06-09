@@ -3,7 +3,7 @@ import { create } from 'zustand';
 export const useToastStore = create((set) => ({
   toasts: [],
   addToast: (message, type = 'success') => {
-    const id = Date.now();
+    const id = typeof crypto !== 'undefined' ? crypto.randomUUID() : Date.now().toString();
     set((state) => ({
       toasts: [...state.toasts, { id, message, type }],
     }));

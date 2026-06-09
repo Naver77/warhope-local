@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Trash2, Minus, Plus, ShoppingBag, 
-  ArrowRight, ShieldCheck, Heart, AlertCircle, CheckCircle2, XCircle
+  ArrowRight, ShieldCheck, Heart, AlertCircle, CheckCircle2, XCircle, Tag
 } from "lucide-react";
 import { useCartStore } from "../../../store/cartStore";
 import { useAuthStore } from "../../../store/authStore";
@@ -18,7 +18,8 @@ export default function CartPage() {
   const addToast = useToastStore((state) => state.addToast);
   const { toggleWishlist } = useWishlistStore();
 
-  const { items, removeItem, updateQuantity, updateVariant, getTotalPrice } = useCartStore();
+  // ✅ Ambil fungsi getOriginalTotalPrice yang baru dibuat
+  const { items, removeItem, updateQuantity, updateVariant, getTotalPrice, getOriginalTotalPrice } = useCartStore();
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
@@ -63,8 +64,10 @@ export default function CartPage() {
     );
   }
 
-  const totalPrice = getTotalPrice();
-  const grandTotal = totalPrice;
+  // ✅ KALKULASI DISKON GLOBAL UNTUK RINGKASAN
+  const originalTotal = getOriginalTotalPrice();
+  const finalTotal = getTotalPrice();
+  const totalDiscount = originalTotal - finalTotal;
 
   return (
     <main className="min-h-screen bg-background pt-8 pb-24 px-4 sm:px-6 max-w-7xl mx-auto">
@@ -86,20 +89,16 @@ export default function CartPage() {
 
             if (item.sizes) {
               try {
-                // Parsing object sizes (contoh: { "S": { active: true, stock: 10 } })
                 const parsedSizes = typeof item.sizes === "string" ? JSON.parse(item.sizes) : item.sizes;
                 
                 if (Array.isArray(parsedSizes)) {
-                  // Fallback untuk data lama yang berbentuk Array
                   availableSizes = parsedSizes;
                   currentSizeStock = item.stock || 10; 
                 } else {
-                  // Untuk format object matrix terbaru
                   availableSizes = Object.entries(parsedSizes)
                     .filter(([, data]) => data.active)
                     .map(([key]) => key);
                   
-                  // Mengambil stok spesifik untuk size yang dipilih di keranjang
                   currentSizeStock = parsedSizes[item.selectedSize]?.stock || 0;
                 }
               } catch {
@@ -111,9 +110,18 @@ export default function CartPage() {
               currentSizeStock = item.stock || 0;
             }
 
+            // ✅ LOGIKA PENAMPILAN HARGA DISKON
+            const origPrice = Number(item.price) || 0;
+            const finPrice = Number(item.finalPrice ?? item.final_price ?? origPrice);
+            const hasDiscount = finPrice < origPrice;
+
             return (
               <div key={uniqueKey} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 md:p-6 rounded-3xl shadow-sm flex flex-col sm:flex-row gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="w-24 h-24 sm:w-32 sm:h-32 bg-slate-100 dark:bg-slate-800 rounded-2xl overflow-hidden shrink-0 relative group">
+                  {/* BADGE DISKON (jika ada) */}
+                  {hasDiscount && (
+                    <div className="absolute top-0 right-0 bg-red-600 text-white text-[10px] font-black px-2 py-1 rounded-bl-xl z-10">SALE</div>
+                  )}
                   <Link href={`/product/${item.id}`}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={item.image} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
@@ -127,7 +135,18 @@ export default function CartPage() {
                       <Link href={`/product/${item.id}`} className="font-bold text-lg md:text-xl text-foreground hover:text-blue-600 transition-colors line-clamp-1">
                         {item.name}
                       </Link>
-                      <p className="font-black text-blue-600 dark:text-blue-400 mt-1">{formatRupiah(item.price)}</p>
+                      
+                      {/* AREA HARGA */}
+                      <div className="mt-1 flex items-baseline gap-2">
+                        <p className="font-black text-blue-600 dark:text-blue-400 text-lg">
+                          {formatRupiah(finPrice)}
+                        </p>
+                        {hasDiscount && (
+                          <p className="text-xs font-medium text-slate-400 line-through decoration-red-500/50">
+                            {formatRupiah(origPrice)}
+                          </p>
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex flex-col gap-2 shrink-0">
@@ -153,7 +172,6 @@ export default function CartPage() {
                         </select>
                       </div>
                       
-                      {/* INDIKATOR SISA STOK VISUAL */}
                       {currentSizeStock === 0 ? (
                         <p className="text-[10px] font-bold text-red-600 dark:text-red-400 flex items-center gap-1">
                           <XCircle className="w-3 h-3" /> Stok Habis
@@ -181,14 +199,14 @@ export default function CartPage() {
                         <span className="font-bold text-sm w-4 text-center">{item.quantity}</span>
                         <button
                           onClick={() => updateQuantity(item.id, item.selectedColor, item.selectedSize, item.quantity + 1)}
-                          disabled={item.quantity >= currentSizeStock} // BUTTON OTOMATIS MATI JIKA MELEBIHI STOK SIZE
+                          disabled={item.quantity >= currentSizeStock} 
                           className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white dark:hover:bg-slate-700 text-foreground disabled:opacity-30 disabled:hover:bg-transparent transition-all"
                           title={item.quantity >= currentSizeStock ? "Maksimal stok tercapai" : "Tambah jumlah"}
                         >
                           <Plus className="w-3.5 h-3.5" />
                         </button>
                       </div>
-                      {/* Peringatan jika barang di keranjang melebihi batas (misal admin baru mengubah stok) */}
+                      
                       {item.quantity > currentSizeStock && currentSizeStock > 0 && (
                         <span className="text-[9px] text-red-500 font-bold bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded">
                           Kurangi Qty
@@ -209,12 +227,19 @@ export default function CartPage() {
             <div className="space-y-4 mb-6">
               <div className="flex justify-between text-sm">
                 <span className="text-slate-400">Total Harga Produk</span>
-                <span className="font-medium text-white">{formatRupiah(totalPrice)}</span>
+                <span className="font-medium text-white">{formatRupiah(originalTotal)}</span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-400">Biaya Layanan</span>
-                <span className="font-medium text-green-400">GRATIS</span>
-              </div>
+              
+              {/* TAMPILAN DISKON JIKA ADA */}
+              {totalDiscount > 0 && (
+                <div className="flex justify-between text-sm items-center">
+                  <span className="text-red-400 flex items-center gap-1.5">
+                    <Tag className="w-3 h-3" /> Diskon Produk
+                  </span>
+                  <span className="font-bold text-red-400">-{formatRupiah(totalDiscount)}</span>
+                </div>
+              )}
+
               <div className="flex justify-between text-sm">
                 <span className="text-slate-400">Biaya Pengiriman</span>
                 <span className="font-medium text-amber-400">Dihitung di Checkout</span>
@@ -223,7 +248,7 @@ export default function CartPage() {
               <div className="pt-4 border-t border-slate-700 flex justify-between items-end mt-6">
                 <span className="text-base font-bold">Total Sementara</span>
                 <span className="text-2xl font-black tracking-tighter text-blue-400">
-                  {formatRupiah(grandTotal)}
+                  {formatRupiah(finalTotal)}
                 </span>
               </div>
             </div>

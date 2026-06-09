@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Mail, KeyRound, User, ArrowRight, ShieldCheck, ArrowLeft } from 'lucide-react';
 import { useAuthStore } from '../../../store/authStore';
 import { useToastStore } from '../../../store/toastStore';
+import { supabase } from '../../../lib/supabase';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -30,14 +31,17 @@ export default function RegisterPage() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleRegister = (e) => {
+  const handleRegister = async (e) => {
     e.preventDefault();
     
-    if (formData.name.trim().length < 3) {
+    const cleanName = formData.name.trim();
+    const cleanEmail = formData.email.trim().toLowerCase();
+    
+    if (cleanName.length < 3) {
       addToast('Nama lengkap minimal 3 karakter!', 'error');
       return;
     }
-    if (!formData.email.includes('@')) {
+    if (!cleanEmail.includes('@')) {
       addToast('Format email tidak valid!', 'error');
       return;
     }
@@ -48,17 +52,37 @@ export default function RegisterPage() {
 
     setIsProcessing(true);
 
-    setTimeout(() => {
-      // Simulasi Registrasi (Karena menggunakan Zustand State)
-      login({ 
-        name: formData.name, 
-        email: formData.email.toLowerCase(), 
-        role: 'user' 
+    try {
+      // 1. Eksekusi Registrasi Asli ke Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: cleanEmail,
+        password: formData.password,
+        options: {
+          data: {
+            full_name: cleanName, // Ini akan ditangkap otomatis oleh Database Trigger kita
+          }
+        }
       });
+
+      if (authError) throw authError;
+
+      // 2. Auto-login jika Supabase langsung mengembalikan sesi (jika konfirmasi email dimatikan)
+      if (authData.user) {
+        await login({ 
+          id: authData.user.id,
+          email: cleanEmail, 
+        });
+      }
       
-      addToast('Pendaftaran berhasil! Selamat berbelanja.', 'success');
+      addToast('Pendaftaran berhasil! Selamat bergabung di Warhope.', 'success');
       window.location.href = '/'; 
-    }, 1500); 
+
+    } catch (error) {
+      console.error("Register Error:", error);
+      addToast(error.message === 'User already registered' ? 'Email ini sudah terdaftar. Silakan login.' : 'Gagal melakukan pendaftaran. Coba lagi nanti.', 'error');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   if (!isInitialized) {

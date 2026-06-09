@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, Filter, Loader2, PackageX } from 'lucide-react';
+import { Search, Filter, PackageX, ChevronDown, ArrowUpDown } from 'lucide-react';
 import ProductCard from '../../../components/ProductCard'; 
 import { useProductStore } from '../../../store/productStore';
 
@@ -10,6 +10,15 @@ export default function KatalogPage() {
   
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Semua');
+  const [sortBy, setSortBy] = useState('default');
+  
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    // Memberitahu ESLint bahwa pemanggilan state di sini disengaja untuk Next.js Hydration
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setIsMounted(true);
+  }, []);
 
   useEffect(() => {
     fetchProducts();
@@ -20,9 +29,9 @@ export default function KatalogPage() {
     return ['Semua', ...new Set(products.map(p => p.category).filter(Boolean))].sort();
   }, [products]);
 
-  const filteredProducts = useMemo(() => {
+  const filteredAndSortedProducts = useMemo(() => {
     if (!products) return [];
-    let result = products;
+    let result = [...products];
 
     if (selectedCategory !== 'Semua') {
       result = result.filter(p => p.category === selectedCategory);
@@ -36,66 +45,91 @@ export default function KatalogPage() {
       );
     }
 
+    result.sort((a, b) => {
+      const priceA = a.final_price ?? a.price;
+      const priceB = b.final_price ?? b.price;
+
+      if (sortBy === 'price-asc') return priceA - priceB;
+      if (sortBy === 'price-desc') return priceB - priceA;
+      return 0; 
+    });
+
     return result;
-  }, [products, searchQuery, selectedCategory]);
+  }, [products, searchQuery, selectedCategory, sortBy]);
+
+  if (!isMounted) return null;
 
   return (
     <main className="min-h-screen bg-background pt-32 pb-24 px-4 sm:px-6 max-w-7xl mx-auto">
       
-      {/* Header Katalog */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-12">
-        <div>
-          <h1 className="text-4xl md:text-5xl font-black tracking-tight text-foreground mb-3">
-            Katalog Koleksi
-          </h1>
-          <p className="text-foreground/60 text-lg max-w-2xl">
-            Eksplorasi gaya urban sejati. Temukan produk streetwear premium dengan kualitas material terbaik untuk keseharianmu.
-          </p>
-        </div>
+      <div className="mb-10">
+        <h1 className="text-4xl md:text-5xl font-black tracking-tight text-foreground mb-3">
+          Katalog Koleksi
+        </h1>
+        <p className="text-foreground/60 text-lg max-w-2xl">
+          Eksplorasi gaya urban sejati. Temukan produk streetwear premium dengan kualitas material terbaik untuk keseharianmu.
+        </p>
+      </div>
 
-        {/* Search Bar */}
-        <div className="relative w-full md:w-80 shrink-0">
+      <div className="flex flex-col lg:flex-row gap-4 mb-12 bg-white dark:bg-slate-900/50 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        
+        <div className="relative flex-1">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
           <input 
             type="text" 
             placeholder="Cari T-Shirt, Hoodie..." 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-full py-3 pl-12 pr-4 text-sm font-medium focus:ring-2 focus:ring-blue-600 outline-none transition-shadow shadow-sm"
+            className="w-full bg-slate-50 dark:bg-slate-950 border-none rounded-2xl py-3.5 pl-12 pr-4 text-sm font-medium focus:ring-2 focus:ring-blue-600 outline-none transition-shadow"
           />
         </div>
+
+        <div className="flex flex-col sm:flex-row gap-4">
+          {/* Perbaikan Tailwind: min-w-[180px] menjadi min-w-45 */}
+          <div className="relative group min-w-45">
+            <Filter className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
+            <select 
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-slate-950 text-foreground text-sm font-bold appearance-none py-3.5 pl-11 pr-10 rounded-2xl cursor-pointer outline-none focus:ring-2 focus:ring-blue-600"
+            >
+              {categories.map((cat) => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          </div>
+
+          {/* Perbaikan Tailwind: min-w-[200px] menjadi min-w-50 */}
+          <div className="relative group min-w-50">
+            <ArrowUpDown className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
+            <select 
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-slate-950 text-foreground text-sm font-bold appearance-none py-3.5 pl-11 pr-10 rounded-2xl cursor-pointer outline-none focus:ring-2 focus:ring-blue-600"
+            >
+              <option value="default">Urutkan Relevansi</option>
+              <option value="price-asc">Harga: Terendah</option>
+              <option value="price-desc">Harga: Tertinggi</option>
+            </select>
+            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          </div>
+        </div>
       </div>
 
-      {/* Filter Kategori */}
-      <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar pb-4 mb-8">
-        <div className="flex items-center gap-2 mr-2 text-slate-400">
-          <Filter className="w-4 h-4" />
-          <span className="text-xs font-bold uppercase tracking-widest">Filter:</span>
+      {isLoading && (!products || products.length === 0) ? (
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6 md:gap-8">
+          {[...Array(8)].map((_, i) => (
+            <div key={i} className="flex flex-col gap-3 animate-pulse">
+              <div className="bg-slate-200 dark:bg-slate-800 aspect-square rounded-3xl w-full"></div>
+              <div className="h-5 bg-slate-200 dark:bg-slate-800 rounded-md w-3/4 mt-2"></div>
+              <div className="h-6 bg-slate-200 dark:bg-slate-800 rounded-md w-1/2"></div>
+            </div>
+          ))}
         </div>
-        {categories.map((cat) => (
-          <button
-            key={cat}
-            onClick={() => setSelectedCategory(cat)}
-            className={`whitespace-nowrap px-6 py-2.5 rounded-full text-sm font-bold transition-all ${
-              selectedCategory === cat 
-                ? 'bg-blue-600 text-white shadow-md border border-blue-600' 
-                : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-foreground/70 hover:border-slate-400'
-            }`}
-          >
-            {cat}
-          </button>
-        ))}
-      </div>
-
-      {/* Grid Produk */}
-      {isLoading ? (
-        <div className="flex flex-col items-center justify-center py-32">
-          <Loader2 className="w-10 h-10 text-blue-600 animate-spin mb-4" />
-          <p className="text-foreground/60 font-medium">Memuat koleksi terbaru...</p>
-        </div>
-      ) : filteredProducts.length > 0 ? (
+      ) : filteredAndSortedProducts.length > 0 ? (
         <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6 md:gap-8 animate-in fade-in duration-700">
-          {filteredProducts.map((product) => (
+          {filteredAndSortedProducts.map((product) => (
             <ProductCard key={product.id} product={product} />
           ))}
         </div>
@@ -105,20 +139,17 @@ export default function KatalogPage() {
             <PackageX className="w-8 h-8 text-slate-400" />
           </div>
           <h3 className="text-xl font-bold text-foreground mb-2">Produk Tidak Ditemukan</h3>
-          
           <p className="text-foreground/60 max-w-md">
             Maaf, kami tidak dapat menemukan produk yang cocok dengan pencarian atau filter &quot;{searchQuery || selectedCategory}&quot;.
           </p>
-          
           <button 
-            onClick={() => { setSearchQuery(''); setSelectedCategory('Semua'); }}
+            onClick={() => { setSearchQuery(''); setSelectedCategory('Semua'); setSortBy('default'); }}
             className="mt-6 text-blue-600 font-bold hover:underline"
           >
             Reset Pencarian
           </button>
         </div>
       )}
-
     </main>
   );
 }

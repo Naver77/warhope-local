@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { supabaseAdmin } from '../../../../lib/supabase'; // Menggunakan Admin Client!
+import { supabaseAdmin } from '../../../../lib/supabase'; // Pastikan path ini benar
 
 export async function POST(req) {
   try {
@@ -21,7 +21,7 @@ export async function POST(req) {
       const digest = crypto.createHash('sha256').update(rawBody, 'utf8').digest('base64');
       
       // Susun komponen signature sesuai standar DOKU
-      const requestTarget = '/api/webhook/doku'; // Sesuaikan dengan path endpoint ini di Doku Dashboard
+      const requestTarget = '/api/webhook/doku'; // Sesuaikan dengan path endpoint Anda di Doku Dashboard
       const signatureString = `Client-Id:${clientId}\nRequest-Id:${requestId}\nRequest-Timestamp:${requestTimestamp}\nRequest-Target:${requestTarget}\nDigest:${digest}`;
       
       // Generate HMAC
@@ -39,10 +39,10 @@ export async function POST(req) {
       return NextResponse.json({ error: "Payload tidak valid." }, { status: 400 });
     }
 
-    // 3. IDEMPOTENCY CHECK (Cegah Eksekusi Ganda)
+    // 3. IDEMPOTENCY CHECK (Cek Status Pesanan Saat Ini)
     const { data: orderData, error: orderError } = await supabaseAdmin
       .from('orders')
-      .select('*')
+      .select('id, status')
       .eq('invoice_number', invoiceNumber)
       .single();
 
@@ -50,44 +50,23 @@ export async function POST(req) {
       return NextResponse.json({ error: "Pesanan tidak ditemukan." }, { status: 404 });
     }
 
-    // Jika sudah dibayar sebelumnya, hentikan proses (jangan potong stok lagi)
-    if (orderData.status === 'PAID') {
-      return NextResponse.json({ message: "Pesanan sudah lunas sebelumnya. Webhook diabaikan." }, { status: 200 });
+    // Jika sudah dibayar atau diproses, hentikan agar tidak ada update redundant
+    if (orderData.status === 'PAID' || orderData.status === 'PROCESSING' || orderData.status === 'SHIPPED' || orderData.status === 'COMPLETED') {
+      return NextResponse.json({ message: "Pesanan sudah diproses sebelumnya. Webhook diabaikan." }, { status: 200 });
     }
 
     // 4. UPDATE STATUS PESANAN JADI 'PAID'
-    await supabaseAdmin
+    // Logika pemotongan stok dihapus dari sini karena sudah ditangani saat Checkout (createOrder).
+    const { error: updateError } = await supabaseAdmin
       .from('orders')
       .update({ status: 'PAID' })
       .eq('invoice_number', invoiceNumber);
 
-    // 5. PEMOTONGAN STOK FISIK OTOMATIS
-    // Karena kolom 'items' adalah jsonb, Supabase biasanya sudah mengembalikan sebagai Object
-    let items = typeof orderData.items === 'string' ? JSON.parse(orderData.items) : orderData.items;
-
-    for (const item of items) {
-      const { data: product } = await supabaseAdmin
-        .from('products')
-        .select('sizes')
-        .eq('id', item.id)
-        .single();
-
-      if (product && product.sizes) {
-        let sizesMatrix = typeof product.sizes === 'string' ? JSON.parse(product.sizes) : product.sizes;
-
-        if (sizesMatrix[item.selectedSize]) {
-          const currentStock = sizesMatrix[item.selectedSize].stock || 0;
-          sizesMatrix[item.selectedSize].stock = Math.max(0, currentStock - item.quantity);
-
-          await supabaseAdmin
-            .from('products')
-            .update({ sizes: sizesMatrix })
-            .eq('id', item.id);
-        }
-      }
+    if (updateError) {
+      throw updateError;
     }
 
-    return NextResponse.json({ message: "Webhook berhasil diproses & Stok diperbarui." }, { status: 200 });
+    return NextResponse.json({ message: "Webhook berhasil diproses. Status pesanan menjadi PAID." }, { status: 200 });
 
   } catch (error) {
     console.error("Error Webhook:", error);

@@ -1,4 +1,9 @@
-import React from "react";
+"use client";
+
+import React, { useMemo } from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import useSWR from "swr"; // 1. Impor SWR untuk manajemen cache profesional
 import {
   LayoutDashboard,
   ShoppingBag,
@@ -7,18 +12,62 @@ import {
   Star,
 } from "lucide-react";
 
-export default function Sidebar({
-  activeTab,
-  setActiveTab,
-  handleLogout,
-  pendingOrdersCount = 0,
-}) {
+import { useAuthStore } from "../../../store/authStore";
+import { getAllOrders } from "../../../lib/api"; 
+
+export default function Sidebar() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const { logout } = useAuthStore();
+
+  // -----------------------------------------------------------------
+  // 2. IMPLEMENTASI SWR UNTUK BADGE SIDEBAR
+  // -----------------------------------------------------------------
+  // Mengambil data pesanan secara otomatis dan menyimpannya di cache global browser
+  const { data: orders = [] } = useSWR(
+    "admin-orders-list", // Kunci cache yang unik untuk data pesanan
+    getAllOrders,        // Fungsi API untuk mengambil pesanan dari Supabase
+    {
+      revalidateOnFocus: false, // Mencegah reload berulang saat pindah tab browser
+      revalidateIfStale: false, // Gunakan cache yang ada tanpa loading ulang jika komponen remount
+    }
+  );
+
+  // -----------------------------------------------------------------
+  // 3. KALKULASI BADGE MENGGUNAKAN useMemo
+  // -----------------------------------------------------------------
+  // Hanya menghitung ulang jika isi array 'orders' benar-benar berubah
+  const pendingOrdersCount = useMemo(() => {
+    return orders.filter(
+      (o) =>
+        o.status === "PENDING_PAYMENT" ||
+        o.status === "PAID" ||
+        o.status === "PROCESSING",
+    ).length;
+  }, [orders]);
+
   const confirmLogout = () => {
     const isConfirmed = window.confirm(
       "Apakah Anda yakin ingin keluar dari Panel Admin?",
     );
-    if (isConfirmed) handleLogout();
+    if (isConfirmed) {
+      logout();
+      router.push("/auth/login");
+    }
   };
+
+  // Konfigurasi Menu Navigasi
+  const navItems = [
+    { name: "Ringkasan", href: "/admin", icon: LayoutDashboard },
+    {
+      name: "Pesanan Masuk",
+      href: "/admin/orders",
+      icon: ShoppingBag,
+      badge: pendingOrdersCount, // Menggunakan hasil kalkulasi memo
+    },
+    { name: "Katalog Produk", href: "/admin/products", icon: PackageSearch },
+    { name: "Ulasan Pembeli", href: "/admin/reviews", icon: Star },
+  ];
 
   return (
     <aside className="w-full md:w-64 bg-white dark:bg-slate-900 border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0">
@@ -37,45 +86,32 @@ export default function Sidebar({
       </div>
 
       <nav className="flex-1 p-4 flex md:flex-col gap-2 overflow-x-auto hide-scrollbar">
-        <button
-          onClick={() => setActiveTab("dashboard")}
-          className={`w-full flex items-center justify-center md:justify-start gap-3 px-4 py-3 rounded-xl font-bold transition-all whitespace-nowrap ${activeTab === "dashboard" ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400" : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"}`}
-        >
-          <LayoutDashboard className="w-5 h-5 shrink-0" />
-          <span className="hidden sm:inline-block">Ringkasan</span>
-        </button>
+        {navItems.map((item) => {
+          const isActive = pathname === item.href;
+          const Icon = item.icon;
 
-        {/* TAB PESANAN MASUK ADMIN */}
-        <button
-          onClick={() => setActiveTab("orders")}
-          className={`w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold transition-all whitespace-nowrap ${activeTab === "orders" ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400" : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"}`}
-        >
-          <div className="flex items-center gap-3">
-            <ShoppingBag className="w-5 h-5 shrink-0" />
-            <span className="hidden sm:inline-block">Pesanan Masuk</span>
-          </div>
-          {pendingOrdersCount > 0 && (
-            <span className="bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm animate-pulse">
-              {pendingOrdersCount}
-            </span>
-          )}
-        </button>
-
-        <button
-          onClick={() => setActiveTab("products")}
-          className={`w-full flex items-center justify-center md:justify-start gap-3 px-4 py-3 rounded-xl font-bold transition-all whitespace-nowrap ${activeTab === "products" ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400" : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"}`}
-        >
-          <PackageSearch className="w-5 h-5 shrink-0" />
-          <span className="hidden sm:inline-block">Katalog Produk</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab("reviews")}
-          className={`w-full flex items-center justify-center md:justify-start gap-3 px-4 py-3 rounded-xl font-bold transition-all whitespace-nowrap ${activeTab === "reviews" ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400" : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"}`}
-        >
-          <Star className="w-5 h-5 shrink-0" />
-          <span className="hidden sm:inline-block">Ulasan Pembeli</span>
-        </button>
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold transition-all whitespace-nowrap ${
+                isActive
+                  ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
+                  : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Icon className="w-5 h-5 shrink-0" />
+                <span className="hidden sm:inline-block">{item.name}</span>
+              </div>
+              {item.badge > 0 && (
+                <span className="bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm animate-pulse">
+                  {item.badge}
+                </span>
+              )}
+            </Link>
+          );
+        })}
       </nav>
 
       <div className="p-4 border-t border-slate-200 dark:border-slate-800 space-y-2 hidden md:block">

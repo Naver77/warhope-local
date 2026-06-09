@@ -6,7 +6,7 @@ import { MapPin, Phone, Mail, ArrowRight, CheckCircle, ShieldCheck, Scissors } f
 
 export default function AboutPage() {
   return (
-    <main className="min-h-screen bg-background pt-8 pb-24">
+    <main className="min-h-screen bg-background pt-20 pb-24">
       
       {/* HERO SECTION */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 mb-20 lg:mb-32">
