@@ -29,10 +29,16 @@ export default function UserOrdersPage() {
   const fetchOrders = useCallback(async () => {
     if (!user) return;
     setIsLoading(true);
-    const data = await getUserOrders(user.id);
-    setOrders(data);
-    setIsLoading(false);
-  }, [user]);
+    try {
+      const data = await getUserOrders(user.id);
+      setOrders(data || []);
+    } catch (error) {
+      console.error("Gagal mengambil pesanan", error);
+      addToast('Gagal memuat riwayat pesanan.', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user, addToast]);
 
   useEffect(() => {
     if (isInitialized) {
@@ -50,7 +56,7 @@ export default function UserOrdersPage() {
   };
 
   const handleCompleteOrder = async (orderId) => {
-    if (!confirm('Apakah Anda yakin pesanan sudah diterima dengan baik dan sesuai?')) return;
+    if (!window.confirm('Apakah Anda yakin pesanan sudah diterima dengan baik dan sesuai?')) return;
     
     setIsProcessing(true);
     try {
@@ -97,12 +103,14 @@ export default function UserOrdersPage() {
     catch { return []; }
   };
 
+  // 🔥 UPDATE: Normalisasi status pembacaan ke format Lowercase agar tahan banting
   const getStatusStep = (status) => {
-    if (status === 'PENDING_PAYMENT' || status === 'PENDING') return 1;
-    if (status === 'PAID' || status === 'PROCESSING') return 2;
-    if (status === 'SHIPPED') return 3;
-    if (status === 'COMPLETED') return 4;
-    return 0;
+    const s = String(status).toLowerCase();
+    if (s === 'pending_payment' || s === 'pending') return 1;
+    if (s === 'paid' || s === 'processing' || s === 'packing') return 2;
+    if (s === 'shipped') return 3;
+    if (s === 'completed') return 4;
+    return 0; // Canceled / Expired
   };
 
   if (!isInitialized || !user) return <div className="min-h-screen pt-32 pb-20 bg-background"></div>;
@@ -130,7 +138,8 @@ export default function UserOrdersPage() {
           {orders.map((order) => {
             const step = getStatusStep(order.status);
             const items = parseItems(order.items);
-            const isCanceled = order.status === 'CANCELED' || order.status === 'EXPIRED';
+            const rawStatus = String(order.status).toLowerCase();
+            const isCanceled = rawStatus === 'canceled' || rawStatus === 'expired';
 
             return (
               <div key={order.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden">
@@ -152,7 +161,8 @@ export default function UserOrdersPage() {
                     <div className="mb-8">
                       <div className="flex items-center justify-between mb-2 relative">
                         <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-slate-100 dark:bg-slate-800 rounded-full z-0"></div>
-                        <div className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-blue-600 rounded-full z-0 transition-all duration-1000" style={{ width: `${(step - 1) * 33.33}%` }}></div>
+                        {/* Garis Progress Indikator */}
+                        <div className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-blue-600 rounded-full z-0 transition-all duration-1000" style={{ width: `${Math.min((step - 1) * 33.33, 100)}%` }}></div>
                         
                         <div className={`relative z-10 flex flex-col items-center gap-2 ${step >= 1 ? 'text-blue-600' : 'text-slate-300 dark:text-slate-600'}`}>
                           <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shadow-sm transition-colors ${step >= 1 ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800'}`}><Clock className="w-4 h-4" /></div>
@@ -183,23 +193,49 @@ export default function UserOrdersPage() {
                     </div>
                   )}
 
+                  {/* 🔥 UPDATE: KOTAK RESI & TRACKING LEBIH INFORMATIF */}
                   {order.tracking_number && step === 3 && (
-                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/50 rounded-2xl p-5 mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/50 rounded-2xl p-5 mb-8 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                       <div>
-                        <p className="text-xs text-blue-600/70 dark:text-blue-400/70 font-bold uppercase tracking-widest mb-1">Nomor Resi Pengiriman</p>
-                        <p className="text-xl font-black text-blue-700 dark:text-blue-400 tracking-wider flex items-center gap-2">
-                          {order.tracking_number}
-                          <button onClick={() => handleCopyResi(order.tracking_number)} className="p-1.5 bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-md hover:bg-blue-200 transition-colors" title="Salin Resi"><Copy className="w-4 h-4" /></button>
+                        <p className="text-xs text-blue-600/70 dark:text-blue-400/70 font-bold uppercase tracking-widest mb-1">
+                          Dikirim via {order.courier || "Ekspedisi"}
                         </p>
-                        <p className="text-xs text-blue-600/70 dark:text-blue-400/70 mt-2 flex items-center gap-1"><ExternalLink className="w-3 h-3" /> Lacak resi di web kurir terkait.</p>
+                        <div className="flex items-center flex-wrap gap-2">
+                          <p className="text-xl font-black text-blue-700 dark:text-blue-400 tracking-wider">
+                            {order.tracking_number}
+                          </p>
+                          <button 
+                            onClick={() => handleCopyResi(order.tracking_number)} 
+                            className="p-1.5 bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-md hover:bg-blue-200 transition-colors" 
+                            title="Salin Resi"
+                          >
+                            <Copy className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <p className="text-xs text-blue-600/70 dark:text-blue-400/70 mt-2 flex items-center gap-1">
+                          Pesanan sedang dalam perjalanan ke alamat Anda.
+                        </p>
                       </div>
-                      <button 
-                        onClick={() => handleCompleteOrder(order.id)}
-                        disabled={isProcessing}
-                        className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-full font-bold transition-all shadow-lg active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
-                      >
-                        <ShieldCheck className="w-4 h-4" /> Pesanan Diterima
-                      </button>
+
+                      <div className="flex flex-col sm:flex-row w-full lg:w-auto gap-3">
+                        {/* Tombol Lacak Otomatis ke CekResi */}
+                        <a 
+                          href={`https://cekresi.com/?noresi=${order.tracking_number}`} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="w-full sm:w-auto bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 hover:bg-blue-50 dark:hover:bg-slate-700 px-6 py-3 rounded-full font-bold transition-all flex items-center justify-center gap-2"
+                        >
+                          <ExternalLink className="w-4 h-4" /> Lacak Paket
+                        </a>
+                        
+                        <button 
+                          onClick={() => handleCompleteOrder(order.id)}
+                          disabled={isProcessing}
+                          className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-full font-bold transition-all shadow-lg active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                        >
+                          <ShieldCheck className="w-4 h-4" /> Pesanan Diterima
+                        </button>
+                      </div>
                     </div>
                   )}
 
@@ -235,6 +271,7 @@ export default function UserOrdersPage() {
         </div>
       )}
 
+      {/* Modal Review (Tetap sama seperti aslinya) */}
       {reviewModal.isOpen && (
         <div className="fixed inset-0 z-140 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-3xl shadow-2xl p-6 animate-in zoom-in-95 duration-200">

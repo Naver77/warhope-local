@@ -2,102 +2,88 @@ import crypto from 'crypto';
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// Inisialisasi Supabase
+// 🔥 UPDATE: WAJIB Menggunakan SERVICE ROLE KEY untuk bypass RLS
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY; // Pastikan KEY ini ada di .env Anda!
+
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
+});
 
 export async function POST(req) {
   try {
-    // 1. Ambil data mentah (raw text) dan JSON dari request DOKU
-    const rawBody = await req.text(); // Diperlukan untuk cek Signature
-    const body = JSON.parse(rawBody); // Diperlukan untuk ambil data invoice
+    const rawBody = await req.text(); 
+    const body = JSON.parse(rawBody); 
     
-    // 2. Ambil Header penting dari DOKU
     const clientId = req.headers.get('client-id');
     const requestId = req.headers.get('request-id');
     const requestTimestamp = req.headers.get('request-timestamp');
     const signatureFromDoku = req.headers.get('signature');
 
-    // 3. Pastikan semua Kunci Rahasia ada
     const secretKey = process.env.DOKU_SECRET_KEY;
     if (!secretKey) {
       return NextResponse.json({ error: "Secret Key tidak dikonfigurasi" }, { status: 500 });
     }
 
-    // =========================================================================
-    // KEAMANAN (SECURITY CHECK): VALIDASI SIGNATURE DOKU
-    // =========================================================================
-    
-    // A. Buat Digest (Hash) dari body mentah
+    // --- VALIDASI SIGNATURE ---
     const digestHash = crypto.createHash('sha256').update(rawBody).digest('base64');
-    
-    // B. Susun ulang komponen Signature persis seperti saat mengirim
-    // CATATAN: Untuk notifikasi (Notification URL), target path harus persis sama dengan 
-    // alamat endpoint webhook ini (biasanya dikonfigurasi di dashboard DOKU).
-    // Kita asumsikan endpoint kita adalah /api/doku/callback
     const targetPath = '/api/doku/callback'; 
     const componentSignature = `Client-Id:${clientId}\nRequest-Id:${requestId}\nRequest-Timestamp:${requestTimestamp}\nRequest-Target:${targetPath}\nDigest:${digestHash}`;
-    
-    // C. Buat HMAC Signature
     const calculatedHmac = crypto.createHmac('sha256', secretKey).update(componentSignature).digest('base64');
     const calculatedSignature = `HMACSHA256=${calculatedHmac}`;
 
-    // D. Bandingkan Signature dari DOKU dengan yang kita hitung
-    // (Jika tidak cocok, berarti ini request palsu dari Hacker!)
     if (signatureFromDoku !== calculatedSignature) {
-      console.warn("Peringatan Keamanan: Signature DOKU tidak valid!", { expected: calculatedSignature, received: signatureFromDoku });
-      // Untuk tujuan testing/sandbox, terkadang format path beda. Kita tetap log, 
-      // tapi dalam mode produksi kita harus return 401 Unauthorized.
-      // return NextResponse.json({ error: "Unauthorized / Signature Tidak Valid" }, { status: 401 });
+      console.warn("Peringatan: Signature DOKU tidak valid!", { expected: calculatedSignature, received: signatureFromDoku });
+      // Di Production, buka komentar baris di bawah ini untuk menolak request palsu
+      // return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // =========================================================================
-    // PROSES PEMBARUAN DATABASE (UPDATE PESANAN)
-    // =========================================================================
-
-    // DOKU akan mengirimkan status transaksi dalam array transactions
-    // atau di bagian order.invoice_number
     let invoiceNumber = null;
     let paymentStatus = null;
 
-    // Menangani format notifikasi sukses dari DOKU Jokul
     if (body.order && body.order.invoice_number) {
         invoiceNumber = body.order.invoice_number;
     }
     
-    // Menangani format status transaksi
     if (body.transaction && body.transaction.status) {
-        paymentStatus = body.transaction.status.toUpperCase(); // SUCCESS, FAILED, EXPIRED
+        paymentStatus = body.transaction.status.toUpperCase(); 
     }
 
     if (!invoiceNumber) {
-        return NextResponse.json({ error: "Invoice Number tidak ditemukan dalam payload" }, { status: 400 });
+        return NextResponse.json({ error: "Invoice Number tidak ditemukan" }, { status: 400 });
     }
 
-    console.log(`Menerima notifikasi untuk Invoice: ${invoiceNumber} dengan status: ${paymentStatus}`);
+    console.log(`Webhook DOKU: Invoice ${invoiceNumber} | Status ${paymentStatus}`);
 
-    // Jika transaksinya SUKSES, perbarui status di Supabase menjadi PAID
+    // --- UPDATE STATUS KE SUPABASE ---
     if (paymentStatus === 'SUCCESS') {
-        const { data, error } = await supabase
+        // 🔥 UPDATE: Gunakan supabaseAdmin dan huruf kecil 'paid'
+        const { data, error } = await supabaseAdmin
             .from('orders')
-            .update({ status: 'PAID' }) // Ubah status menjadi PAID (Lunas)
-            .eq('invoice_number', invoiceNumber) // Cocokkan berdasarkan Nomor Invoice
+            .update({ status: 'paid' }) 
+            .eq('invoice_number', invoiceNumber) 
             .select()
-            .single(); // PERBAIKAN: Ambil datanya untuk dikirim ke email
+            .single(); 
 
         if (error) {
-            console.error(`Gagal update Supabase untuk invoice ${invoiceNumber}:`, error);
+            console.error(`Gagal update DB untuk ${invoiceNumber}:`, error);
             return NextResponse.json({ error: "Gagal update database" }, { status: 500 });
         }
-        console.log(`Berhasil update status menjadi PAID untuk ${invoiceNumber}`);
+        
+        console.log(`Berhasil update ${invoiceNumber} menjadi 'paid'`);
 
-        // --- FITUR BARU: TEMBAK EMAIL OTOMATIS (KESEPAKATAN KITA) ---
+        // --- PENGIRIMAN EMAIL OTOMATIS ---
         if (data && data.customer_email) {
           try {
-            // Karena ini di sisi server, kita panggil API email menggunakan absolute/internal URL
-            const originUrl = req.headers.get('origin') || 'http://localhost:3000';
-            await fetch(`${originUrl}/api/send-email`, {
+            // 🔥 UPDATE: Gunakan VERCEL_URL jika ada, jika tidak fallback ke localhost
+            const baseUrl = process.env.VERCEL_URL 
+              ? `https://${process.env.VERCEL_URL}` 
+              : 'http://localhost:3000';
+            
+            await fetch(`${baseUrl}/api/send-email`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -114,22 +100,20 @@ export async function POST(req) {
         }
 
     } else if (paymentStatus === 'FAILED' || paymentStatus === 'EXPIRED') {
-        const { error: updateError } = await supabase
+        const { error: updateError } = await supabaseAdmin
             .from('orders')
-            .update({ status: paymentStatus })
+            .update({ status: paymentStatus.toLowerCase() }) // 'failed' atau 'expired'
             .eq('invoice_number', invoiceNumber);
 
         if (updateError) {
-            console.error(`Gagal update status FAILED untuk ${invoiceNumber}:`, updateError);
+            console.error(`Gagal update DB FAILED/EXPIRED untuk ${invoiceNumber}:`, updateError);
         }
     }
 
-    // WAJIB: Membalas (Acknowledge) ke server DOKU dengan status 200 OK
-    // Agar DOKU tahu bahwa notifikasinya sudah kita terima dengan baik
-    return NextResponse.json({ message: "Notifikasi diterima dengan baik" }, { status: 200 });
+    return NextResponse.json({ message: "Notifikasi berhasil diproses" }, { status: 200 });
 
   } catch (error) {
-    console.error("Kesalahan Internal Webhook:", error);
+    console.error("Kesalahan Webhook Callback:", error);
     return NextResponse.json({ error: "Terjadi kesalahan internal" }, { status: 500 });
   }
 }

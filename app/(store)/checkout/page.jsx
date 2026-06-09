@@ -8,7 +8,7 @@ import { Truck, ShoppingBag, ShieldCheck, ArrowRight, MapPin, ReceiptText, Tag }
 import { useCartStore } from '../../../store/cartStore';
 import { useToastStore } from '../../../store/toastStore';
 import { useAuthStore } from '../../../store/authStore';
-import { createOrder, getProvinces } from '../../../lib/api'; // Mengaktifkan kembali getProvinces
+import { createOrder, getProvinces } from '../../../lib/api'; 
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -22,8 +22,9 @@ export default function CheckoutPage() {
   // State untuk menampung data provinsi dari database
   const [provinces, setProvinces] = useState([]);
 
+  // 🔥 UPDATE: Menambah provinceId untuk select yang lebih aman
   const [formData, setFormData] = useState({
-    firstName: '', lastName: '', email: '', phone: '', address: '', city: '', state: '', zip: ''
+    firstName: '', lastName: '', email: '', phone: '', address: '', city: '', state: '', provinceId: '', zip: ''
   });
 
   const [baseShipping, setBaseShipping] = useState(0);
@@ -45,7 +46,7 @@ export default function CheckoutPage() {
     initCheckout();
   }, [checkAuth]);
 
-  // UPDATE: AUTO-FILL DATA DARI PROFIL (Berdasarkan Tabel public.users)
+  // AUTO-FILL DATA DARI PROFIL (Berdasarkan Tabel public.users)
   useEffect(() => {
     if (isClient && isInitialized) {
       if (!user) {
@@ -65,7 +66,7 @@ export default function CheckoutPage() {
     }
   }, [isClient, isInitialized, user, router, addToast]);
 
-  // UPDATE: KALKULASI DISKON PRESISI
+  // KALKULASI DISKON PRESISI
   const calculateTotals = () => {
     let originalTotal = 0;
     let finalTotal = 0;
@@ -95,18 +96,21 @@ export default function CheckoutPage() {
 
   const handleInputChange = (e) => setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
 
-  // LOGIKA PENGAMBILAN ONGKIR BERDASARKAN PROVINSI DATABASE
+  // 🔥 UPDATE: PENGAMBILAN ONGKIR MENGGUNAKAN ID PROVINSI
   const handleProvinceChange = (e) => {
-    const provName = e.target.value;
-    // Mencari data provinsi berdasarkan nama dari state dinamis
-    const selectedProv = provinces.find(p => p.name === provName);
-    
-    setFormData(prev => ({ ...prev, state: provName }));
+    const provId = e.target.value;
+    const selectedProv = provinces.find(p => String(p.id) === String(provId));
     
     if (selectedProv) {
+      setFormData(prev => ({ 
+        ...prev, 
+        provinceId: provId,
+        state: selectedProv.name // Tetap simpan nama untuk disimpan ke address string nanti
+      }));
       setBaseShipping(Number(selectedProv.cost) || 0);
       setEstimatedTime(selectedProv.etd || '1-3 Hari');
     } else {
+      setFormData(prev => ({ ...prev, provinceId: '', state: '' }));
       setBaseShipping(0);
       setEstimatedTime('');
     }
@@ -146,9 +150,10 @@ export default function CheckoutPage() {
         
         const fullAddress = `${formData.address}, ${formData.city}, Provinsi ${formData.state} ${formData.zip}`;
         
+        // 🔥 UPDATE: Normalisasi key item untuk keseragaman database
         const itemsWithFinalPrice = items.map(item => ({
           ...item,
-          recordedPrice: item.finalPrice ?? item.final_price ?? item.price
+          price_at_purchase: item.finalPrice ?? item.final_price ?? item.price // Menggunakan nama key yg sama dengan tabel order_items
         }));
 
         const orderPayload = {
@@ -159,8 +164,10 @@ export default function CheckoutPage() {
           shipping_address: fullAddress,
           items: itemsWithFinalPrice, 
           total_amount: grandTotal,
-          status: 'PENDING_PAYMENT',
-          user_id: user.id 
+          status: 'pending', // Konsisten menggunakan huruf kecil untuk trigger Supabase
+          user_id: user.id,
+          // Menyisipkan preferensi tipe kurir (Reguler/Ekspres) agar admin tahu
+          courier: shippingType === 'ekspres' ? 'Ekspres (Kilat)' : 'Reguler' 
         };
 
         await createOrder(orderPayload, itemsWithFinalPrice);
@@ -234,46 +241,47 @@ export default function CheckoutPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-widest text-foreground/50 mb-2 px-1">Nama Depan *</label>
-                <input name="firstName" value={formData.firstName} onChange={handleInputChange} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="Budi" />
+                <input name="firstName" value={formData.firstName || ''} onChange={handleInputChange} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="Budi" />
               </div>
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-widest text-foreground/50 mb-2 px-1">Nama Belakang</label>
-                <input name="lastName" value={formData.lastName} onChange={handleInputChange} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="Santoso" />
+                <input name="lastName" value={formData.lastName || ''} onChange={handleInputChange} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="Santoso" />
               </div>
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-widest text-foreground/50 mb-2 px-1">Alamat Email *</label>
-                <input type="email" name="email" value={formData.email} onChange={handleInputChange} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground/50 rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all cursor-not-allowed" placeholder="budi@email.com" readOnly />
+                <input type="email" name="email" value={formData.email || ''} onChange={handleInputChange} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground/50 rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all cursor-not-allowed" placeholder="budi@email.com" readOnly />
               </div>
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-widest text-foreground/50 mb-2 px-1">Nomor HP / WhatsApp *</label>
-                <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="08123456789" />
+                <input type="tel" name="phone" value={formData.phone || ''} onChange={handleInputChange} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="08123456789" />
               </div>
               <div className="col-span-1 md:col-span-2">
                 <label className="block text-[10px] font-bold uppercase tracking-widest text-foreground/50 mb-2 px-1">Alamat Lengkap *</label>
-                <input name="address" value={formData.address} onChange={handleInputChange} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="Nama jalan, gedung, RT/RW, no rumah" />
+                <input name="address" value={formData.address || ''} onChange={handleInputChange} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="Nama jalan, gedung, RT/RW, no rumah" />
               </div>
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-widest text-foreground/50 mb-2 px-1">Kota/Kabupaten *</label>
-                <input name="city" value={formData.city} onChange={handleInputChange} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="Misal: Jakarta Selatan, Kab. Bogor" />
+                <input name="city" value={formData.city || ''} onChange={handleInputChange} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="Misal: Jakarta Selatan, Kab. Bogor" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-foreground/50 mb-2 px-1">Provinsi *</label>
+                  {/* 🔥 UPDATE: Select berdasarkan provinceId */}
                   <select 
-                    name="state" 
-                    value={formData.state} 
+                    name="provinceId" 
+                    value={formData.provinceId || ''} 
                     onChange={handleProvinceChange} 
                     className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all appearance-none cursor-pointer"
                   >
                     <option value="" disabled>Pilih Provinsi...</option>
                     {provinces.map((prov) => (
-                      <option key={prov.id} value={prov.name}>{prov.name}</option>
+                      <option key={prov.id} value={prov.id}>{prov.name}</option>
                     ))}
                   </select>
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-foreground/50 mb-2 px-1">Kode Pos</label>
-                  <input name="zip" value={formData.zip} onChange={handleInputChange} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="12345" />
+                  <input name="zip" value={formData.zip || ''} onChange={handleInputChange} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-foreground rounded-xl p-4 text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all" placeholder="12345" />
                 </div>
               </div>
             </div>
