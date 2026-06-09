@@ -15,13 +15,11 @@ export default function KatalogPage() {
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
-    // Memberitahu ESLint bahwa pemanggilan state di sini disengaja untuk Next.js Hydration
+    // Pengecualian ESLint untuk trik Next.js Hydration
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsMounted(true);
-  }, []);
-
-  useEffect(() => {
-    fetchProducts();
+    
+    fetchProducts(); // Langsung fetch saat komponen di-mount
   }, [fetchProducts]);
 
   const categories = useMemo(() => {
@@ -57,11 +55,16 @@ export default function KatalogPage() {
     return result;
   }, [products, searchQuery, selectedCategory, sortBy]);
 
-  if (!isMounted) return null;
+  // HAPUS BARIS INI: if (!isMounted) return null;
+  // Biarkan Next.js merender layout kasarnya dari Server!
+
+  // Tentukan apakah kita harus menampilkan loading
+  const showLoading = !isMounted || (isLoading && (!products || products.length === 0));
 
   return (
     <main className="min-h-screen bg-background pt-32 pb-24 px-4 sm:px-6 max-w-7xl mx-auto">
       
+      {/* Header Halaman (Akan langsung tampil secepat kilat) */}
       <div className="mb-10">
         <h1 className="text-4xl md:text-5xl font-black tracking-tight text-foreground mb-3">
           Katalog Koleksi
@@ -71,8 +74,8 @@ export default function KatalogPage() {
         </p>
       </div>
 
+      {/* Filter Bar (Akan langsung tampil) */}
       <div className="flex flex-col lg:flex-row gap-4 mb-12 bg-white dark:bg-slate-900/50 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
-        
         <div className="relative flex-1">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
           <input 
@@ -85,7 +88,6 @@ export default function KatalogPage() {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-4">
-          {/* Perbaikan Tailwind: min-w-[180px] menjadi min-w-45 */}
           <div className="relative group min-w-45">
             <Filter className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
             <select 
@@ -93,14 +95,14 @@ export default function KatalogPage() {
               onChange={(e) => setSelectedCategory(e.target.value)}
               className="w-full bg-slate-50 dark:bg-slate-950 text-foreground text-sm font-bold appearance-none py-3.5 pl-11 pr-10 rounded-2xl cursor-pointer outline-none focus:ring-2 focus:ring-blue-600"
             >
-              {categories.map((cat) => (
+              {/* Fallback option saat belum mounted */}
+              {isMounted ? categories.map((cat) => (
                 <option key={cat} value={cat}>{cat}</option>
-              ))}
+              )) : <option value="Semua">Semua</option>}
             </select>
             <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           </div>
 
-          {/* Perbaikan Tailwind: min-w-[200px] menjadi min-w-50 */}
           <div className="relative group min-w-50">
             <ArrowUpDown className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
             <select 
@@ -117,7 +119,9 @@ export default function KatalogPage() {
         </div>
       </div>
 
-      {isLoading && (!products || products.length === 0) ? (
+      {/* Tampilan Area Produk */}
+      {showLoading ? (
+        // SKELETON LANGSUNG TAMPIL DARI SERVER
         <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6 md:gap-8">
           {[...Array(8)].map((_, i) => (
             <div key={i} className="flex flex-col gap-3 animate-pulse">
