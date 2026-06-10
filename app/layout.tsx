@@ -5,6 +5,7 @@ import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import ToastProvider from "../components/ToastProvider";
 import AuthListener from "../components/AuthListener"; // IMPORT LISTENER BARU
+import { Analytics } from '@vercel/analytics/next';
 
 // 2. Konfigurasi Font
 const modernFont = Plus_Jakarta_Sans({ 
@@ -88,6 +89,7 @@ export default function RootLayout({
 
         <Footer />
         <ToastProvider />
+        <Analytics />
       </body>
     </html>
   );
