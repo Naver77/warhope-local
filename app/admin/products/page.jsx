@@ -21,23 +21,29 @@ const EMPTY_ARRAY = [];
 
 // OPTIMASI: Hanya ambil kolom yang benar-benar di-render di tabel (Sangat Menghemat Bandwidth & Cepat)
 const fetchProductsAndCategories = async () => {
-  const [productsRes, categoriesRes] = await Promise.all([
+  const [productsRes, categoriesRes, sizesRes] = await Promise.all([
     supabase
       .from('products')
-      .select('id, name, category, price, final_price, discount, stock, image, created_at')
+      .select('*') // Sudah diperbaiki menjadi '*' sesuai pembahasan sebelumnya
       .order('created_at', { ascending: false }),
     supabase
       .from('categories')
       .select('name')
-      .order('name')
+      .order('name'),
+    supabase
+      .from('master_sizes')
+      .select('name')
+      .order('sort_order', { ascending: true }) // Urutkan berdasarkan S, M, L, XL
   ]);
 
   if (productsRes.error) throw productsRes.error;
   if (categoriesRes.error) throw categoriesRes.error;
+  if (sizesRes.error) throw sizesRes.error;
 
   return {
     products: productsRes.data || [],
-    categories: categoriesRes.data.map(c => c.name) || []
+    categories: categoriesRes.data.map(c => c.name) || [],
+    masterSizes: sizesRes.data.map(s => s.name) || [] // Data baru
   };
 };
 
@@ -61,6 +67,7 @@ export default function AdminProductsPage() {
 
   const products = data?.products || EMPTY_ARRAY;
   const dbCategories = data?.categories || EMPTY_ARRAY;
+  const masterSizes = data?.masterSizes || EMPTY_ARRAY;
 
   const [searchProductTerm, setSearchProductTerm] = useState("");
   const deferredSearchTerm = useDeferredValue(searchProductTerm);
@@ -321,7 +328,16 @@ export default function AdminProductsPage() {
         )}
       </div>
 
-      <ProductFormModal isOpen={isModalOpen} onClose={handleCloseModal} mode={modalMode} initialProduct={editingProduct} allCategories={allCategories} onSuccess={handleDataSuccess} />
+      {/* UPDATE: Lempar masterSizes sebagai prop ke ProductFormModal */}
+      <ProductFormModal 
+        isOpen={isModalOpen} 
+        onClose={handleCloseModal} 
+        mode={modalMode} 
+        initialProduct={editingProduct} 
+        allCategories={allCategories} 
+        masterSizes={masterSizes} 
+        onSuccess={handleDataSuccess} 
+      />
       <CategoryManagerModal isOpen={isCategoryModalOpen} onClose={() => setIsCategoryModalOpen(false)} products={products} onCategoryUpdated={() => mutate()} />
 
       {deleteModal.isOpen && (

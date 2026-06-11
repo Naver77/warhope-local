@@ -5,66 +5,63 @@ import { useToastStore } from '../../../store/toastStore';
 import { supabase } from '../../../lib/supabase';
 import { addProduct, updateProduct } from '../../../lib/api';
 
-const defaultSizes = {
-  S: { active: false, stock: 0 },
-  M: { active: false, stock: 0 },
-  L: { active: false, stock: 0 },
-  XL: { active: false, stock: 0 },
-  XXL: { active: false, stock: 0 },
-  "All Size": { active: false, stock: 0 },
-};
+// initialForm sekarang tidak memiliki sizes statis
+const getInitialForm = () => ({ 
+  id: '', name: '', category: '', price: '', discount: 0, weight: '500', description: '', image: '', sizes: {} 
+});
 
-const initialForm = { 
-  id: '', 
-  name: '', 
-  category: '', 
-  price: '', 
-  discount: 0, 
-  weight: '500', 
-  description: '', 
-  image: '', 
-  sizes: JSON.parse(JSON.stringify(defaultSizes)) 
-};
-
-export default function ProductFormModal({ isOpen, onClose, mode, initialProduct, allCategories, onSuccess }) {
+// UPDATE: Tangkap prop masterSizes
+export default function ProductFormModal({ isOpen, onClose, mode, initialProduct, allCategories, masterSizes, onSuccess }) {
   const addToast = useToastStore((state) => state.addToast);
   
-  const [formData, setFormData] = useState(initialForm);
-  const [originalData, setOriginalData] = useState(initialForm);
+  const [formData, setFormData] = useState(getInitialForm());
+  const [originalData, setOriginalData] = useState(getInitialForm());
   
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
-  
-  const [processStep, setProcessStep] = useState(''); // '', 'compress', 'upload', 'save'
+  const [processStep, setProcessStep] = useState(''); 
   const isProcessing = processStep !== '';
-
   const [discardModalOpen, setDiscardModalOpen] = useState(false);
 
   useEffect(() => {
     setProcessStep(''); 
 
     if (isOpen) {
-      let targetData = JSON.parse(JSON.stringify(initialForm));
+      // 1. RAKIT UKURAN DASAR DINAMIS DARI DATABASE
+      const dynamicBaseSizes = {};
+      masterSizes.forEach(sizeName => {
+        dynamicBaseSizes[sizeName] = { active: false, stock: 0 };
+      });
+
+      let targetData = getInitialForm();
+      targetData.sizes = { ...dynamicBaseSizes };
       
       if (mode === 'edit' && initialProduct) {
-        let parsedSizes = JSON.parse(JSON.stringify(defaultSizes));
         let productSizes = initialProduct.sizes;
 
         if (typeof productSizes === 'string') {
           try { productSizes = JSON.parse(productSizes); } catch {}
         }
 
-        if (Array.isArray(productSizes)) {
-          productSizes.forEach(s => { if(parsedSizes[s]) parsedSizes[s] = { active: true, stock: 10 } });
-        } else if (typeof productSizes === 'object' && productSizes !== null) {
-          parsedSizes = { ...parsedSizes, ...productSizes };
+        // 2. GABUNGKAN DATA DATABASE DENGAN DATA PRODUK
+        if (typeof productSizes === 'object' && productSizes !== null && !Array.isArray(productSizes)) {
+           Object.keys(productSizes).forEach(key => {
+             // Jika ukuran ini ada di tabel master_sizes, muat datanya
+             if(dynamicBaseSizes[key] !== undefined) {
+               dynamicBaseSizes[key] = {
+                 active: productSizes[key].active || false,
+                 stock: parseInt(productSizes[key].stock) || 0
+               }
+             }
+           });
         }
 
         targetData = { 
           ...initialProduct, 
-          sizes: parsedSizes,
+          sizes: dynamicBaseSizes,
           weight: initialProduct.weight?.toString() || '500',
-          discount: parseInt(initialProduct.discount) || 0 
+          discount: parseInt(initialProduct.discount) || 0,
+          description: initialProduct.description || '' 
         };
         setImagePreview(initialProduct.image);
       } else if (mode === 'add') {
@@ -74,19 +71,18 @@ export default function ProductFormModal({ isOpen, onClose, mode, initialProduct
       setFormData(targetData);
       setOriginalData(targetData);
     } else {
-      setFormData(JSON.parse(JSON.stringify(initialForm)));
-      setOriginalData(JSON.parse(JSON.stringify(initialForm)));
+      setFormData(getInitialForm());
+      setOriginalData(getInitialForm());
       setImageFile(null);
       setImagePreview(null);
       setDiscardModalOpen(false);
     }
-  }, [isOpen, mode, initialProduct, allCategories]);
+  }, [isOpen, mode, initialProduct, allCategories, masterSizes]);
 
   const isDirty = useMemo(() => {
     return JSON.stringify(formData) !== JSON.stringify(originalData) || imageFile !== null;
   }, [formData, originalData, imageFile]);
 
-  // Kalkulasi Harga Akhir (Realtime untuk UI & Payload Database)
   const calculatedFinalPrice = useMemo(() => {
     const basePrice = parseInt(formData.price) || 0;
     const disc = parseInt(formData.discount) || 0;
@@ -132,8 +128,17 @@ export default function ProductFormModal({ isOpen, onClose, mode, initialProduct
     const file = e.target.files[0];
     if (!file) return;
     
-    if (file.size > 5 * 1024 * 1024) { addToast('Ukuran file terlalu besar! Maksimal 5MB.', 'error'); return; }
-    if (!file.type.startsWith('image/')) { addToast('Format file tidak didukung! Gunakan gambar.', 'error'); return; }
+    // 1. VALIDASI UKURAN MAKSIMAL 2MB (2 * 1024 * 1024 bytes)
+    if (file.size > 2 * 1024 * 1024) { 
+      addToast('Ukuran file terlalu besar! Maksimal 2MB.', 'error'); 
+      return; 
+    }
+    
+    // 2. VALIDASI FORMAT GAMBAR
+    if (!file.type.startsWith('image/')) { 
+      addToast('Format file tidak didukung! Gunakan gambar.', 'error'); 
+      return; 
+    }
 
     setImageFile(file);
     setImagePreview(URL.createObjectURL(file)); 
@@ -176,39 +181,42 @@ export default function ProductFormModal({ isOpen, onClose, mode, initialProduct
 
       let finalImageUrl = formData.image;
 
-      // PROSES 1: KOMPRESI & UPLOAD GAMBAR (DIOPTIMALKAN)
+      // PROSES 1: KOMPRESI & UPLOAD GAMBAR (VERSI ULTRA FAST)
       if (imageFile) {
         setProcessStep('compress'); 
         
-        // Mengubah parameter agar library tidak melakukan looping degradasi kualitas
+        // Konfigurasi kompresi yang dioptimalkan untuk file awal <= 2MB
         const options = {
-          maxSizeMB: 1.5,        // Dinaikkan ke 1.5MB agar kompresi langsung selesai dalam 1x pass (instan)
-          maxWidthOrHeight: 800, // Dimensi ini sudah otomatis memotong ukuran file menjadi sangat kecil (~100kb-200kb)
-          useWebWorker: true,
-          fileType: 'image/webp'
+          maxSizeMB: 0.5,            // Targetkan hasil akhir maksimal 500KB (biasanya hasilnya akan jauh di bawah ini)
+          maxWidthOrHeight: 1000,    // Batasi dimensi agar tidak ada foto raksasa yang merusak layout UI
+          useWebWorker: true,        // Gunakan thread latar belakang agar browser tidak lag
+          fileType: 'image/webp',    // PAKSA konversi ke format .webp
+          initialQuality: 0.8,       // Langsung tembak di kualitas 80% (sekali jalan, tanpa iterasi berulang)
+          alwaysKeepResolution: false 
         };
 
-        // Proses ini sekarang akan berjalan di bawah 200ms
+        // Karena file awal sudah dibatasi 2MB dan quality langsung diset 80%, proses ini akan instan
         const compressedBlob = await imageCompression(imageFile, options);
         
         setProcessStep('upload'); 
         const fileName = `${formData.id}-${Date.now()}.webp`;
         
+        // Kirim hasil kompresi berformat .webp ke Supabase Storage
         const { error: uploadError } = await supabase.storage
           .from('products')
           .upload(fileName, compressedBlob, { 
             contentType: 'image/webp',
-            cacheControl: '3600', 
+            cacheControl: '31536000', // Cache 1 tahun
             upsert: false 
           });
 
         if (uploadError) throw new Error(`Gagal upload gambar: ${uploadError.message}`);
 
+        // Dapatkan Public URL untuk disimpan ke dalam tabel 'products'
         const { data: { publicUrl } } = supabase.storage.from('products').getPublicUrl(fileName);
         finalImageUrl = publicUrl;
       }
 
-      // PROSES 2: SIMPAN DATA KE DATABASE
       setProcessStep('save'); 
 
       const totalGlobalStock = Object.values(formData.sizes).reduce((acc, curr) => {
@@ -217,7 +225,6 @@ export default function ProductFormModal({ isOpen, onClose, mode, initialProduct
 
       const needsStringifiedSizes = initialProduct && typeof initialProduct.sizes === 'string';
 
-      // Payload bersih tanpa 'final_price' karena dihitung otomatis oleh Generated Column Supabase
       const payload = {
         id: formData.id,
         name: formData.name,
@@ -231,11 +238,11 @@ export default function ProductFormModal({ isOpen, onClose, mode, initialProduct
         sizes: needsStringifiedSizes ? JSON.stringify(formData.sizes) : formData.sizes,
       };
 
-      let savedData = null; // Tambahkan variabel untuk menangkap data dari database
+      let savedData = null; 
 
       if (mode === 'add') {
         const res = await addProduct(payload);
-        savedData = res[0]; // Supabase mengembalikan data dalam bentuk array
+        savedData = res[0]; 
         addToast(`Produk ditambahkan!`, 'success');
       } else {
         const res = await updateProduct(payload.id, payload);
@@ -243,11 +250,8 @@ export default function ProductFormModal({ isOpen, onClose, mode, initialProduct
         addToast(`Produk diperbarui!`, 'success');
       }
       
-      // Tutup modal secepat mungkin
       forceCloseModal(); 
       setProcessStep(''); 
-      
-      // 🚀 UPDATE: Kirim data yang berhasil disimpan langsung ke halaman Admin!
       onSuccess(savedData, mode); 
 
     } catch (err) {
@@ -261,8 +265,11 @@ export default function ProductFormModal({ isOpen, onClose, mode, initialProduct
 
   return (
     <div className="fixed inset-0 z-140 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+      {/* ... SISA UI MODAL (Header, Input Gambar, Input Nama, Harga) SAMA PERSIS SEPERTI SEBELUMNYA ... */}
+      
+      {/* Saya sertakan bagian render grid sizes agar Anda melihat ia me-loop object dinamis */}
       <div className="bg-white dark:bg-slate-800 w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
-        
+        {/* Header Modal */}
         <div className="relative z-20 flex justify-between items-center p-6 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shrink-0 shadow-sm">
           <h3 className="text-xl font-bold text-foreground flex items-center gap-2">
             {mode === 'add' ? 'Tambah Produk Baru' : 'Edit Produk'}
@@ -271,10 +278,12 @@ export default function ProductFormModal({ isOpen, onClose, mode, initialProduct
           <button onClick={handleRequestClose} disabled={isProcessing} className="text-foreground/40 hover:text-foreground p-1 transition-colors disabled:opacity-50"><X className="w-6 h-6" /></button>
         </div>
         
+        {/* Form Body */}
         <form onSubmit={handleSubmitProduct} className="flex flex-col flex-1 overflow-hidden bg-slate-50/50 dark:bg-slate-800/20">
           <div className="p-6 overflow-y-auto flex-1 custom-scrollbar">
             <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
               
+              {/* Kolom Gambar */}
               <div className="md:col-span-4 space-y-4">
                 <label className="text-xs font-bold text-foreground/60 uppercase tracking-widest block mb-2">Foto Produk</label>
                 <div className={`relative group w-full aspect-square rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden flex flex-col items-center justify-center text-center transition-all shadow-sm ${isProcessing ? 'opacity-70 pointer-events-none' : 'cursor-pointer hover:border-blue-500'}`}>
@@ -298,6 +307,7 @@ export default function ProductFormModal({ isOpen, onClose, mode, initialProduct
                 </div>
               </div>
 
+              {/* Kolom Input Text */}
               <div className="md:col-span-8 space-y-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   
@@ -366,7 +376,7 @@ export default function ProductFormModal({ isOpen, onClose, mode, initialProduct
                 <div>
                   <label className="text-xs font-bold text-foreground/60 uppercase tracking-widest mb-4 flex items-center justify-between">
                     Manajemen Varian & Stok Fisik
-                    <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-2 py-1 rounded-md lowercase tracking-normal">Stok global akan otomatis dijumlahkan.</span>
+                    <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-2 py-1 rounded-md lowercase tracking-normal">Stok global otomatis dijumlahkan.</span>
                   </label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {Object.keys(formData.sizes).map(size => {
@@ -399,11 +409,11 @@ export default function ProductFormModal({ isOpen, onClose, mode, initialProduct
             
             <button type="submit" disabled={isProcessing || !isDirty} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-full font-bold transition-all shadow-lg active:scale-95 disabled:opacity-50 flex items-center gap-2 min-w-50 justify-center">
               {processStep === 'compress' ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> Mengompres Foto...</>
+                <><Loader2 className="w-4 h-4 animate-spin" /> Mengompres...</>
               ) : processStep === 'upload' ? (
-                <><UploadCloud className="w-4 h-4 animate-bounce" /> Mengunggah Foto...</>
+                <><UploadCloud className="w-4 h-4 animate-bounce" /> Mengunggah...</>
               ) : processStep === 'save' ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> Menyimpan Data...</>
+                <><Loader2 className="w-4 h-4 animate-spin" /> Menyimpan...</>
               ) : (
                 <><Save className="w-4 h-4" /> Simpan Produk</>
               )}

@@ -45,7 +45,7 @@ export default function LoginPage() {
     setIsProcessing(true);
 
     try {
-      // 1. Tembak langsung ke Supabase Auth
+      // 1. Autentikasi ke Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: cleanEmail,
         password: cleanPassword,
@@ -53,29 +53,41 @@ export default function LoginPage() {
 
       if (authError) throw authError;
 
-      // 2. Jalankan logika login di authStore (Otomatis menarik data profil lengkap dari DB)
-      await login({ 
-        id: authData.user.id,
-        email: cleanEmail 
-      });
+      // 2. Tarik data profil secara langsung untuk mencegah tabrakan lock token dengan AuthListener
+      const { data: profileData, error: profileError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', authData.user.id)
+        .single();
 
-      // 3. Ambil state terbaru setelah proses sinkronisasi database selesai
-      const updatedUser = useAuthStore.getState().user;
-      const userRole = updatedUser?.role || 'customer';
-      const userName = updatedUser?.name || cleanEmail.split('@')[0];
+      if (profileError || !profileData) {
+        throw new Error("Profil pengguna tidak ditemukan di database.");
+      }
 
-      addToast(userRole === 'admin' ? 'Autentikasi Admin berhasil.' : `Selamat datang kembali, ${userName}!`, 'success');
+      // 3. Masukkan data profil langsung ke Zustand store
+      await login(profileData);
+
+      // 4. Normalisasi deteksi tingkat hak akses
+      const userRole = profileData.role?.toLowerCase() || 'customer';
+      const userName = profileData.name || cleanEmail.split('@')[0];
+      const isAdminLevel = userRole === 'superadmin' || userRole === 'admin_staff' || userRole === 'admin';
+
+      addToast(isAdminLevel ? `Autentikasi ${userRole.replace('_', ' ')} berhasil.` : `Selamat datang kembali, ${userName}!`, 'success');
       
-      // 4. Arahkan ke halaman yang sesuai
-      if (userRole === 'admin') {
+      // 5. Pembagian rute halaman tujuan tujuan tanpa memicu interupsi memori
+      if (isAdminLevel) {
         router.replace('/admin');
       } else {
-        window.location.href = '/'; 
+        // Ambil fungsi sinkronisasi massal yang sudah kita optimalkan di Langkah 1
+        const { syncCartFromDB } = useCartStore.getState();
+        await syncCartFromDB(authData.user.id);
+        
+        router.push('/');
       }
 
     } catch (error) {
       console.error("Login Error:", error);
-      addToast(error.message === 'Invalid login credentials' ? 'Email atau kata sandi salah.' : 'Terjadi kesalahan saat login.', 'error');
+      addToast(error.message === 'Invalid login credentials' ? 'Email atau kata sandi salah.' : error.message, 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -90,65 +102,83 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen bg-background flex flex-col items-center justify-center p-4 relative">
-      <Link href="/" className="absolute top-8 left-8 flex items-center gap-2 text-sm font-bold text-foreground/50 hover:text-foreground transition-colors z-10">
-        <ArrowLeft className="w-4 h-4" /> Kembali ke Toko
-      </Link>
+    // Menggunakan pt-28 agar sejajar dengan layout Register dan aman dari navbar
+    <main className="min-h-screen bg-background flex flex-col items-center justify-center px-4 pt-28 pb-12 relative">
+      
+      {/* Posisi tombol kembali disesuaikan agar rapi di atas card */}
+      <div className="w-full max-w-md lg:max-w-4xl mb-4 z-10">
+        <Link href="/" className="inline-flex items-center gap-2 text-sm font-bold text-foreground/50 hover:text-foreground transition-colors">
+          <ArrowLeft className="w-4 h-4" /> Kembali ke Toko
+        </Link>
+      </div>
 
-      <div className="max-w-md w-full bg-white dark:bg-slate-800/50 rounded-3xl shadow-xl overflow-hidden border border-slate-200 dark:border-slate-800 p-8 animate-in zoom-in-95 duration-500 relative">
+      {/* Melebar di desktop (lg:max-w-4xl) */}
+      <div className="w-full max-w-md lg:max-w-4xl bg-white dark:bg-slate-800/50 rounded-3xl shadow-xl overflow-hidden border border-slate-200 dark:border-slate-800 p-8 lg:p-12 animate-in zoom-in-95 duration-500 relative">
+        
         <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl -translate-y-10 translate-x-10 pointer-events-none"></div>
 
-        <div className="text-center mb-8 relative z-10">
+        <div className="text-center lg:text-left mb-8 relative z-10">
           <h1 className="text-3xl font-black text-foreground tracking-tight mb-2">Warhope<span className="text-blue-600">.</span></h1>
           <p className="text-sm text-foreground/60">Masuk ke akun Anda untuk pengalaman berbelanja yang lebih personal.</p>
         </div>
         
-        <form onSubmit={handleLogin} className="space-y-5 relative z-10">
-          <div className="space-y-2">
-            <label className="text-[10px] font-bold text-foreground/60 uppercase tracking-widest px-1">Alamat Email</label>
-            <div className="relative">
-              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-foreground/40" />
-              <input 
-                type="email" name="email" required
-                value={formData.email} onChange={handleInputChange}
-                placeholder="nama@email.com" 
-                className="w-full pl-12 pr-4 py-3.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all text-foreground"
-              />
-            </div>
-          </div>
+        <form onSubmit={handleLogin} className="relative z-10">
+          {/* Layout dua kolom di layar besar */}
+          <div className="flex flex-col lg:flex-row lg:gap-12">
+            
+            {/* KOLOM KIRI: Input Form */}
+            <div className="flex-1 space-y-5">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-foreground/60 uppercase tracking-widest px-1">Alamat Email</label>
+                <div className="relative">
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-foreground/40" />
+                  <input 
+                    type="email" name="email" required
+                    value={formData.email} onChange={handleInputChange}
+                    placeholder="nama@email.com" 
+                    className="w-full pl-12 pr-4 py-3.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all text-foreground"
+                  />
+                </div>
+              </div>
 
-          <div className="space-y-2">
-            <label className="text-[10px] font-bold text-foreground/60 uppercase tracking-widest px-1">Kata Sandi</label>
-            <div className="relative">
-              <KeyRound className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-foreground/40" />
-              <input 
-                type="password" name="password" required minLength="6"
-                value={formData.password} onChange={handleInputChange}
-                placeholder="••••••••" 
-                className="w-full pl-12 pr-4 py-3.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all text-foreground"
-              />
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-foreground/60 uppercase tracking-widest px-1">Kata Sandi</label>
+                <div className="relative">
+                  <KeyRound className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-foreground/40" />
+                  <input 
+                    type="password" name="password" required minLength="6"
+                    value={formData.password} onChange={handleInputChange}
+                    placeholder="••••••••" 
+                    className="w-full pl-12 pr-4 py-3.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all text-foreground"
+                  />
+                </div>
+              </div>
             </div>
-          </div>
 
-          <button type="submit" disabled={isProcessing} className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-blue-600/20 active:scale-95 disabled:opacity-70 flex justify-center items-center gap-2">
-            {isProcessing ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <>Masuk Sekarang <ArrowRight className="w-4 h-4" /></>}
-          </button>
+            {/* KOLOM KANAN: Action Buttons & Info */}
+            <div className="flex-1 flex flex-col justify-center mt-8 lg:mt-0 lg:border-l lg:border-slate-100 dark:lg:border-slate-800 lg:pl-12">
+              <button type="submit" disabled={isProcessing} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-blue-600/20 active:scale-95 disabled:opacity-70 flex justify-center items-center gap-2">
+                {isProcessing ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <>Masuk Sekarang <ArrowRight className="w-4 h-4" /></>}
+              </button>
+
+              <div className="mt-8 text-center relative z-10">
+                <p className="text-sm text-foreground/60">
+                  Belum punya akun?{' '}
+                  <Link href="/auth/register" className="text-blue-600 font-bold hover:underline">
+                    Daftar di sini
+                  </Link>
+                </p>
+              </div>
+
+              <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800 text-center relative z-10">
+                <p className="text-[10px] text-foreground/40 uppercase tracking-widest font-bold flex justify-center items-center gap-1">
+                  <ShieldCheck className="w-4 h-4 text-blue-500" /> Transmisi Data Terenkripsi
+                </p>
+              </div>
+            </div>
+
+          </div>
         </form>
-
-        <div className="mt-8 text-center relative z-10">
-          <p className="text-sm text-foreground/60">
-            Belum punya akun?{' '}
-            <Link href="/auth/register" className="text-blue-600 font-bold hover:underline">
-              Daftar di sini
-            </Link>
-          </p>
-        </div>
-
-        <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800 text-center relative z-10">
-          <p className="text-[10px] text-foreground/40 uppercase tracking-widest font-bold flex justify-center items-center gap-1">
-            <ShieldCheck className="w-3 h-3 text-blue-500" /> Transmisi Data Terenkripsi
-          </p>
-        </div>
       </div>
     </main>
   );

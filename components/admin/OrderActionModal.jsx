@@ -14,10 +14,15 @@ export default function OrderActionModal({
     e.preventDefault();
     onSubmit({
       ...actionModal,
-      trackingNumber: trackingInput,
+      trackingNumber: trackingInput.trim().toUpperCase(), // Otomatis format ke huruf besar
       courier: courierInput,
     });
   };
+
+  // VALIDASI KETAT: Tombol simpan hanya aktif jika resi minimal 8 karakter
+  const isFormValid = actionModal.requiresResi 
+    ? courierInput !== "" && trackingInput.trim().length >= 8
+    : true;
 
   if (!actionModal.isOpen) return null;
 
@@ -67,11 +72,12 @@ export default function OrderActionModal({
                 </div>
                 <div className="mb-6">
                   <label className="text-xs font-bold text-foreground/60 uppercase tracking-widest block mb-2">
-                    Nomor Resi
+                    Nomor Resi <span className="text-[9px] text-red-500 font-normal ml-1">(Minimal 8 Karakter)</span>
                   </label>
                   <input
                     type="text"
                     required
+                    minLength={8}
                     placeholder="Contoh: JX1234567890"
                     value={trackingInput}
                     onChange={(e) => setTrackingInput(e.target.value)}
@@ -91,8 +97,8 @@ export default function OrderActionModal({
               </button>
               <button
                 type="submit"
-                disabled={isUpdatingStatus}
-                className="flex-1 py-3 rounded-full font-bold bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-70 shadow-lg shadow-blue-600/20"
+                disabled={isUpdatingStatus || !isFormValid}
+                className="flex-1 py-3 rounded-full font-bold bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-600/20"
               >
                 {isUpdatingStatus ? "Memproses..." : "Ya, Lanjutkan"}
               </button>

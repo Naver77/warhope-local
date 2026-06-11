@@ -7,19 +7,18 @@ export const useWishlistStore = create(
     (set, get) => ({
       wishlist: [],
       
-      // SINKRONISASI DARI DATABASE (Dijalankan saat User Login)
-      syncWishlistFromDB: async (userEmail, allProducts) => {
-        if (!userEmail || !allProducts || allProducts.length === 0) return;
+      // Ubah userEmail menjadi userId
+      syncWishlistFromDB: async (userId, allProducts) => {
+        if (!userId || !allProducts || allProducts.length === 0) return;
         
         try {
           const { data, error } = await supabase
             .from('wishlists')
             .select('product_id')
-            .eq('user_email', userEmail);
+            .eq('user_id', userId); // Gunakan user_id
             
           if (!error && data) {
             const savedIds = data.map(d => d.product_id);
-            // Cocokkan ID dari database dengan data master produk
             const syncedWishlist = allProducts.filter(p => savedIds.includes(p.id));
             set({ wishlist: syncedWishlist });
           }
@@ -28,45 +27,49 @@ export const useWishlistStore = create(
         }
       },
 
-      // MENAMBAH/MENGHAPUS WISHLIST (Optimistic UI Update + Database)
-      toggleWishlist: async (product, userEmail) => {
+      toggleWishlist: async (product, userId) => {
         const wishlist = get().wishlist;
         const exists = wishlist.find(item => item.id === product.id);
         
         if (exists) {
-          // 1. Hapus dari UI langsung agar terasa sangat cepat
           set({ wishlist: wishlist.filter(item => item.id !== product.id) });
           
-          // 2. Hapus dari Database secara background (diam-diam)
-          if (userEmail) {
+          if (userId) {
             await supabase
               .from('wishlists')
               .delete()
-              .match({ user_email: userEmail, product_id: product.id });
+              .match({ user_id: userId, product_id: product.id }); // Sesuaikan kolom
           }
         } else {
-          // 1. Tambah ke UI langsung
           set({ wishlist: [...wishlist, product] });
           
-          // 2. Tambah ke Database secara background
-          if (userEmail) {
+          if (userId) {
             await supabase
               .from('wishlists')
-              .insert([{ user_email: userEmail, product_id: product.id }]);
+              .insert([{ user_id: userId, product_id: product.id }]); // Sesuaikan kolom
           }
         }
       },
 
-      // Mengecek apakah produk ada di wishlist
       isInWishlist: (id) => {
         return get().wishlist.some(item => item.id === id);
       },
 
-      // Kosongkan wishlist saat Logout
+      deleteAllWishlistFromDB: async (userId) => {
+        set({ wishlist: [] });
+        
+        if (userId) {
+          await supabase
+            .from('wishlists')
+            .delete()
+            .eq('user_id', userId); // Sesuaikan kolom
+        }
+      },
+
       clearWishlist: () => set({ wishlist: [] }),
     }),
     {
-      name: 'warhope_wishlist', // Tetap disimpan di lokal sebagai backup/cache
+      name: 'warhope_wishlist', 
     }
   )
 );

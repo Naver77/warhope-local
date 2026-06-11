@@ -46,23 +46,39 @@ export default function CheckoutPage() {
     initCheckout();
   }, [checkAuth]);
 
-  // AUTO-FILL DATA DARI PROFIL (Berdasarkan Tabel public.users)
+  // AUTO-FILL DATA DARI PROFIL DAN VALIDASI KELENGKAPAN (Gerbang Keamanan)
   useEffect(() => {
     if (isClient && isInitialized) {
       if (!user) {
         addToast('Anda harus masuk (login) untuk melanjutkan pembayaran.', 'error');
         router.push('/auth/login');
-      } else {
-        const nameParts = user.name ? user.name.split(' ') : [];
-        setFormData(prev => ({
-          ...prev,
-          email: user.email || '',
-          firstName: nameParts[0] || '',
-          lastName: nameParts.slice(1).join(' ') || '',
-          phone: user.phone_number || '', 
-          address: user.address || ''     
-        }));
+        return; // Hentikan eksekusi
+      } 
+
+      // ✅ 1. VALIDASI KELENGKAPAN PROFIL TERLEBIH DAHULU
+      const isProfileIncomplete = 
+        !user.phone_number || 
+        user.phone_number.trim() === "" || 
+        !user.address || 
+        user.address.trim() === "";
+
+      if (isProfileIncomplete) {
+        addToast("Lengkapi Nomor Telepon dan Alamat Anda sebelum melanjutkan pembayaran!", "error");
+        router.replace("/profile"); // Gunakan replace agar tidak terjebak di tombol 'Back' browser
+        return; // Hentikan eksekusi agar form tidak di-render setengah-setengah
       }
+
+      // ✅ 2. JIKA LENGKAP, AUTO-FILL DATA KE FORM CHECKOUT
+      const nameParts = user.name ? user.name.split(' ') : [];
+      setFormData(prev => ({
+        ...prev,
+        email: user.email || '',
+        firstName: nameParts[0] || '',
+        lastName: nameParts.slice(1).join(' ') || '',
+        phone: user.phone_number || '', 
+        address: user.address || ''     
+      }));
+      
     }
   }, [isClient, isInitialized, user, router, addToast]);
 

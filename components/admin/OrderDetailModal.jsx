@@ -118,8 +118,20 @@ export default function OrderDetailModal({
                 Rincian Belanja
               </h4>
               <div className="space-y-4 max-h-75 overflow-y-auto pr-2 custom-scrollbar">
-                {getOrderItems().map((item, idx) => (
-                  <div key={idx} className="flex gap-4 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+                {getOrderItems().map((item, idx) => {
+                  
+                  // PERBAIKAN: Menentukan harga dengan presisi (Memprioritaskan price_at_purchase)
+                  const itemFinalPrice = Number(item.price_at_purchase ?? item.finalPrice ?? item.final_price ?? item.price);
+                  const itemOriginalPrice = Number(item.price);
+                  const isDiscounted = itemFinalPrice < itemOriginalPrice;
+
+                  return (
+                  <div key={idx} className="flex gap-4 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm relative overflow-hidden">
+                    {/* Label Diskon */}
+                    {isDiscounted && (
+                      <div className="absolute top-0 right-0 bg-red-500 text-white text-[9px] font-black px-2 py-0.5 rounded-bl-lg">SALE</div>
+                    )}
+
                     <div className="relative w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-xl overflow-hidden shrink-0">
                       <Image
                         src={item.image || '/assets/placeholder.png'}
@@ -130,7 +142,7 @@ export default function OrderDetailModal({
                       />
                     </div>
                     <div className="flex-1 flex flex-col justify-center">
-                      <h5 className="font-bold text-foreground text-sm leading-tight">
+                      <h5 className="font-bold text-foreground text-sm leading-tight pr-4">
                         {item.name}
                       </h5>
                       <div className="flex gap-2 mt-1">
@@ -149,14 +161,23 @@ export default function OrderDetailModal({
                         <span className="text-xs font-bold text-foreground">
                           Qty: {item.quantity}
                         </span>
-                        <span className="font-black text-blue-600 dark:text-blue-400 text-sm">
-                          {formatRupiah(item.price_at_purchase || item.price)}
-                        </span>
+                        
+                        <div className="text-right">
+                          <span className="font-black text-blue-600 dark:text-blue-400 text-sm block">
+                            {formatRupiah(itemFinalPrice)}
+                          </span>
+                          {isDiscounted && (
+                            <span className="text-[10px] text-slate-400 line-through block">
+                              {formatRupiah(itemOriginalPrice)}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
-                ))}
+                )})}
               </div>
+              
               <div className="mt-6 bg-slate-900 dark:bg-black rounded-2xl p-5 text-white shadow-lg">
                 <div className="flex justify-between items-center mb-2 text-slate-400 text-sm">
                   <span>Total Tagihan Dibayar</span>

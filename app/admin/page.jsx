@@ -1,6 +1,5 @@
 "use client";
 
-// Hapus useState, useEffect, useCallback karena SWR yang akan menanganinya
 import React, { useMemo } from "react";
 import useSWR from "swr";
 import {
@@ -12,12 +11,14 @@ import {
   Clock,
   AlertTriangle,
   CheckCircle,
+  Lock
 } from "lucide-react";
+import Image from "next/image";
 
 import { formatRupiah, formatDate, getStatusBadge } from "./utils";
 import { supabase } from "../../lib/supabase"; 
 import { useToastStore } from "../../store/toastStore";
-import Image from "next/image";
+import { useAuthStore } from "../../store/authStore";
 
 // TINGGI SKELETON GRAFIK (Statis agar React murni/pure)
 const SKELETON_HEIGHTS = [30, 60, 40, 70, 50, 80, 20, 90, 40, 60, 50, 70];
@@ -35,7 +36,6 @@ const fetchDashboardData = async () => {
   if (ordersRes.error) throw ordersRes.error;
   if (productsRes.error) throw productsRes.error;
 
-  // SWR mengharuskan kita me-return data
   return {
     orders: ordersRes.data || [],
     products: productsRes.data || [],
@@ -55,20 +55,26 @@ const MetricSkeleton = () => (
 export default function AdminDashboardPage() {
   const addToast = useToastStore((state) => state.addToast);
   
+  // ✅ DETEKSI TINGKAT HAK AKSES ADMIN
+  const { user } = useAuthStore();
+  const userRole = user?.role?.toLowerCase() || 'customer';
+  // Superadmin memiliki akses penuh ke data keuangan
+  const isSuperAdmin = userRole === 'superadmin' || userRole === 'admin';
+
   // -----------------------------------------------------------------
   // 2. IMPLEMENTASI SWR PROFESIONAL
   // -----------------------------------------------------------------
   const { 
     data, 
-    isLoading,    // true HANYA saat pertama kali fetch (belum ada cache)
-    isValidating, // true saat sedang fetch background (termasuk saat Refresh manual)
-    mutate        // Fungsi pemanggil refresh manual
+    isLoading,    
+    isValidating, 
+    mutate        
   } = useSWR(
-    "admin-dashboard-stats", // Kunci cache
-    fetchDashboardData,      // Fungsi fetcher
+    "admin-dashboard-stats", 
+    fetchDashboardData,      
     {
-      revalidateOnFocus: false, // MATIKAN RELOAD SAAT PINDAH TAB BROWSER
-      revalidateIfStale: false, // Cegah reload jika cache masih ada saat komponen remount
+      revalidateOnFocus: false, 
+      revalidateIfStale: false, 
       onError: (error) => {
         console.error("Gagal memuat data dasbor:", error);
         addToast("Gagal memuat data ringkasan.", "error");
@@ -76,7 +82,6 @@ export default function AdminDashboardPage() {
     }
   );
 
-  // Ekstrak data dari SWR (default ke array kosong jika belum ada)
   const orders = data?.orders || EMPTY_ARRAY;
   const products = data?.products || EMPTY_ARRAY;
 
@@ -86,10 +91,10 @@ export default function AdminDashboardPage() {
   ];
 
   // -----------------------------------------------------------------
-  // 3. KALKULASI METRIK (Tetap Menggunakan useMemo agar optimal)
+  // 3. KALKULASI METRIK
   // -----------------------------------------------------------------
   const dashboardStats = useMemo(() => {
-    if (isLoading || !data) return null; // Tunggu data dari SWR
+    if (isLoading || !data) return null; 
 
     const successfulStatuses = ["PAID", "SUCCESS", "PROCESSING", "SHIPPED", "COMPLETED"];
     const paidOrders = orders.filter((o) => successfulStatuses.includes(o.status?.toUpperCase()));
@@ -146,12 +151,10 @@ export default function AdminDashboardPage() {
           <p className="text-slate-500 dark:text-slate-400 mt-1">Pantau performa penjualan dan statistik utama toko Anda.</p>
         </div>
         <button
-          // 4. UBAH TOMBOL REFRESH MEMANGGIL mutate()
           onClick={() => mutate()}
           disabled={isValidating}
           className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-4 py-2.5 rounded-full font-bold text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-all shadow-sm active:scale-95 text-foreground disabled:opacity-50"
         >
-          {/* Putar icon saat `isValidating` true */}
           <RefreshCw className={`w-4 h-4 ${isValidating ? 'animate-spin' : ''}`} /> 
           {isValidating ? 'Memperbarui...' : 'Perbarui Data'}
         </button>
@@ -163,15 +166,19 @@ export default function AdminDashboardPage() {
           <><MetricSkeleton /><MetricSkeleton /><MetricSkeleton /><MetricSkeleton /></>
         ) : (
           <>
-            <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-4 group">
-              <div className="w-14 h-14 rounded-2xl bg-green-50 dark:bg-green-900/20 text-green-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-                <DollarSign className="w-7 h-7" />
+            {/* ✅ KOTAK PENDAPATAN HANYA TAMPIL UNTUK SUPERADMIN */}
+            {isSuperAdmin && (
+              <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-4 group">
+                <div className="w-14 h-14 rounded-2xl bg-green-50 dark:bg-green-900/20 text-green-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                  <DollarSign className="w-7 h-7" />
+                </div>
+                <div className="overflow-hidden flex-1">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 truncate">Pendapatan</p>
+                  <h3 className="text-xl font-black text-foreground truncate">{formatRupiah(dashboardStats.totalRevenue)}</h3>
+                </div>
               </div>
-              <div className="overflow-hidden flex-1">
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1 truncate">Pendapatan</p>
-                <h3 className="text-xl font-black text-foreground truncate">{formatRupiah(dashboardStats.totalRevenue)}</h3>
-              </div>
-            </div>
+            )}
+
             <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-4 group">
               <div className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-900/20 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
                 <ShoppingBag className="w-7 h-7" />
@@ -181,6 +188,7 @@ export default function AdminDashboardPage() {
                 <h3 className="text-xl font-black text-foreground">{dashboardStats.totalOrders} <span className="text-xs font-medium text-slate-400">Trx</span></h3>
               </div>
             </div>
+
             <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-4 group">
               <div className="w-14 h-14 rounded-2xl bg-amber-50 dark:bg-amber-900/20 text-amber-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
                 <Clock className="w-7 h-7" />
@@ -190,6 +198,7 @@ export default function AdminDashboardPage() {
                 <h3 className="text-xl font-black text-foreground">{dashboardStats.pendingOrdersCount}</h3>
               </div>
             </div>
+
             <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-4 group">
               <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform ${dashboardStats.lowStockCount > 0 ? "bg-red-50 dark:bg-red-900/20 text-red-600" : "bg-slate-50 dark:bg-slate-800 text-slate-400"}`}>
                 <AlertTriangle className="w-7 h-7" />
@@ -207,37 +216,49 @@ export default function AdminDashboardPage() {
 
       {/* GRAFIK & PRODUK TERLARIS */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-        <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm p-6 md:p-8 flex flex-col min-h-87.5">
-          <div className="flex items-center justify-between mb-8">
-            <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-blue-600" /> Pendapatan Bulanan ({new Date().getFullYear()})
-            </h3>
-          </div>
-          
-          {isLoading || !dashboardStats ? (
-            <div className="flex-1 flex items-end gap-4 h-64 mt-auto border-b border-slate-100 dark:border-slate-800 pb-2">
-               {SKELETON_HEIGHTS.map((height, i) => (
-                 <div key={i} className="flex-1 bg-slate-100 dark:bg-slate-800 animate-pulse rounded-t-md" style={{ height: `${height}%` }}></div>
-               ))}
+        
+        {/* ✅ GRAFIK HANYA TAMPIL UNTUK SUPERADMIN */}
+        {isSuperAdmin ? (
+          <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm p-6 md:p-8 flex flex-col min-h-87.5">
+            <div className="flex items-center justify-between mb-8">
+              <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-blue-600" /> Pendapatan Bulanan ({new Date().getFullYear()})
+              </h3>
             </div>
-          ) : (
-            <div className="flex-1 flex items-end gap-2 sm:gap-4 h-64 mt-auto border-b border-slate-100 dark:border-slate-800 pb-2">
-              {dashboardStats.monthlyRevenue.map((val, idx) => {
-                const heightPercentage = dashboardStats.maxMonthlyRevenue > 0 ? (val / dashboardStats.maxMonthlyRevenue) * 100 : 0;
-                return (
-                  <div key={idx} className="flex-1 flex flex-col items-center justify-end h-full group relative">
-                    <div className="opacity-0 group-hover:opacity-100 absolute -top-10 bg-slate-800 text-white text-xs font-bold py-1 px-2 rounded-md pointer-events-none transition-opacity whitespace-nowrap z-10">
-                      {formatRupiah(val)}
+            
+            {isLoading || !dashboardStats ? (
+              <div className="flex-1 flex items-end gap-4 h-64 mt-auto border-b border-slate-100 dark:border-slate-800 pb-2">
+                 {SKELETON_HEIGHTS.map((height, i) => (
+                   <div key={i} className="flex-1 bg-slate-100 dark:bg-slate-800 animate-pulse rounded-t-md" style={{ height: `${height}%` }}></div>
+                 ))}
+              </div>
+            ) : (
+              <div className="flex-1 flex items-end gap-2 sm:gap-4 h-64 mt-auto border-b border-slate-100 dark:border-slate-800 pb-2">
+                {dashboardStats.monthlyRevenue.map((val, idx) => {
+                  const heightPercentage = dashboardStats.maxMonthlyRevenue > 0 ? (val / dashboardStats.maxMonthlyRevenue) * 100 : 0;
+                  return (
+                    <div key={idx} className="flex-1 flex flex-col items-center justify-end h-full group relative">
+                      <div className="opacity-0 group-hover:opacity-100 absolute -top-10 bg-slate-800 text-white text-xs font-bold py-1 px-2 rounded-md pointer-events-none transition-opacity whitespace-nowrap z-10">
+                        {formatRupiah(val)}
+                      </div>
+                      <div className="w-full bg-blue-100 dark:bg-blue-900/30 group-hover:bg-blue-600 dark:group-hover:bg-blue-500 rounded-t-md transition-all duration-500 min-h-1" style={{ height: `${heightPercentage}%` }}></div>
+                      <span className="text-[10px] font-bold text-slate-400 mt-3 absolute -bottom-6">{monthNames[idx]}</span>
                     </div>
-                    <div className="w-full bg-blue-100 dark:bg-blue-900/30 group-hover:bg-blue-600 dark:group-hover:bg-blue-500 rounded-t-md transition-all duration-500 min-h-1" style={{ height: `${heightPercentage}%` }}></div>
-                    <span className="text-[10px] font-bold text-slate-400 mt-3 absolute -bottom-6">{monthNames[idx]}</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : (
+          /* TAMPILAN LOCK UNTUK ADMIN STAFF */
+          <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm p-6 md:p-8 flex flex-col items-center justify-center min-h-87.5 text-center">
+            <Lock className="w-12 h-12 text-slate-300 dark:text-slate-700 mb-4" />
+            <h3 className="text-lg font-bold text-foreground mb-1">Grafik Finansial Dikunci</h3>
+            <p className="text-sm text-slate-500">Anda tidak memiliki hak akses tingkat Superadmin untuk melihat metrik pendapatan.</p>
+          </div>
+        )}
 
+        {/* PRODUK TERLARIS */}
         <div className="lg:col-span-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm p-6 md:p-8 flex flex-col">
           <h3 className="text-lg font-bold text-foreground mb-6 flex items-center gap-2">
             <Award className="w-5 h-5 text-amber-500" /> Produk Terlaris
@@ -276,7 +297,10 @@ export default function AdminDashboardPage() {
                   </div>
                   <div className="text-right shrink-0">
                     <p className="font-black text-blue-600 dark:text-blue-400 text-sm">{prod.soldQty} Terjual</p>
-                    <p className="text-[10px] font-bold text-slate-400 mt-0.5">{formatRupiah(prod.revenue)}</p>
+                    {/* Sembunyikan revenue produk spesifik untuk admin staff jika diinginkan, atau biarkan tampil */}
+                    {isSuperAdmin && (
+                      <p className="text-[10px] font-bold text-slate-400 mt-0.5">{formatRupiah(prod.revenue)}</p>
+                    )}
                   </div>
                 </div>
               ))}

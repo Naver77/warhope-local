@@ -15,6 +15,10 @@ export default function AddToCartButton({ product }) {
   const { toggleWishlist, isInWishlist } = useWishlistStore();
   const { user, isInitialized } = useAuthStore();
 
+  // ✅ DETEKSI ROLE ADMIN
+  const userRole = user?.role?.toLowerCase();
+  const isManagement = userRole === 'superadmin' || userRole === 'admin_staff' || userRole === 'admin';
+
   // AMBIL STATUS SEBELUM DI-KLIK
   const isWished = isInWishlist(product.id);
 
@@ -39,7 +43,7 @@ export default function AddToCartButton({ product }) {
       }
     }
     return { availableSize: sizeName, hasStock: isAvailable };
-  }, [product.sizes, product.stock]); // pastikan product.stock masuk dependency
+  }, [product.sizes, product.stock]); 
 
   const handleAdd = (e) => {
     e.preventDefault(); 
@@ -47,6 +51,12 @@ export default function AddToCartButton({ product }) {
     if (isInitialized && !user) {
       addToast('Silakan masuk (login) terlebih dahulu.', 'error');
       router.push('/auth/login');
+      return;
+    }
+
+    // ✅ BLOKIR JIKA USER ADALAH ADMIN
+    if (isManagement) {
+      addToast('Anda tidak memiliki akses ini (Akun Manajemen).', 'error');
       return;
     }
 
@@ -67,9 +77,16 @@ export default function AddToCartButton({ product }) {
 
   const handleWishlist = (e) => {
     e.preventDefault();
+    
     if (isInitialized && !user) {
       addToast('Silakan masuk (login) untuk menggunakan Wishlist.', 'error');
       router.push('/auth/login');
+      return;
+    }
+
+    // ✅ BLOKIR JIKA USER ADALAH ADMIN
+    if (isManagement) {
+      addToast('Anda tidak memiliki akses ini (Akun Manajemen).', 'error');
       return;
     }
 
@@ -97,7 +114,8 @@ export default function AddToCartButton({ product }) {
 
       <button 
         onClick={handleAdd}
-        disabled={!hasStock}
+        // Atribut 'disabled' dihapus secara sengaja agar event onClick selalu terpancing dan memunculkan toast penolakan.
+        // Visual 'disabled' tetap dipertahankan menggunakan styling class di bawah ini jika stok habis.
         className={`w-10 h-10 flex items-center justify-center rounded-full transition-all shadow-sm active:scale-95 
           ${hasStock ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-blue-600 dark:hover:bg-blue-500 hover:text-white hover:scale-105' 
           : 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'}`}

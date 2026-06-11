@@ -4,24 +4,9 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  User,
-  Package,
-  Settings,
-  LogOut,
-  Clock,
-  CheckCircle,
-  Truck,
-  XCircle,
-  MapPin,
-  Mail,
-  Phone,
-  ShoppingBag,
-  AlertTriangle,
-  CreditCard,
-  ShieldCheck, 
-  ArrowRight,
-  AlertCircle,
-  Save
+  User, Package, Settings, LogOut, Clock, CheckCircle, Truck, XCircle,
+  MapPin, Mail, Phone, ShoppingBag, AlertTriangle, CreditCard, ShieldCheck, 
+  ArrowRight, AlertCircle, Save
 } from "lucide-react";
 
 import { useAuthStore } from "../../../store/authStore";
@@ -66,6 +51,7 @@ export default function ProfilePage() {
   });
   const [isProcessingAction, setIsProcessingAction] = useState(false);
 
+  // 1. TRIGGER AWAL LOAD HALAMAN
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsClient(true);
@@ -74,40 +60,57 @@ export default function ProfilePage() {
     return () => clearTimeout(timer);
   }, [checkAuth]);
 
+  // 2. GERBANG UTAMA (VALIDASI LOGIN & ROLE)
   useEffect(() => {
     if (isClient && isInitialized) {
+      // A. Jika belum login, tendang ke halaman login
       if (!user) {
         addToast("Silakan masuk (login) untuk mengakses profil Anda.", "error");
-        router.push("/auth/login");
-      } else {
-        // Inisialisasi data form saat user terdeteksi
-        setProfileForm({
-          name: user.name || "",
-          phone_number: user.phone_number || "",
-          address: user.address || ""
-        });
+        router.replace("/auth/login");
+        return;
+      }
+
+      // B. Jika yang masuk ternyata Admin/Staff, tendang ke Dashboard Admin
+      const userRole = user.role?.toLowerCase() || 'customer';
+      const isAdminLevel = userRole === 'superadmin' || userRole === 'admin_staff' || userRole === 'admin';
+
+      if (isAdminLevel) {
+        router.replace("/admin");
+        return;
+      }
+
+      // C. Jika Customer biasa (Valid), isi data form profilnya!
+      setProfileForm({
+        name: user.name || "",
+        phone_number: user.phone_number || "",
+        address: user.address || ""
+      });
+
+      // D. Cerdas: Jika nomor HP atau Alamat kosong, langsung arahkan ke tab Settings
+      if (!user.phone_number || !user.address) {
+        setActiveTab("settings");
       }
     }
   }, [isClient, isInitialized, user, router, addToast]);
 
+  // 3. AMBIL DATA PESANAN DARI DATABASE
   useEffect(() => {
     const fetchMyOrders = async () => {
-      // Menggunakan user.id agar lebih presisi sesuai pembaruan DB
       if (!user?.id) return;
       setIsLoadingOrders(true);
       try {
         const { data, error } = await supabase
           .from("orders")
           .select("*")
-          .eq("user_id", user.id) // Diubah dari customer_email ke user_id
+          .eq("user_id", user.id) 
           .order("created_at", { ascending: false });
 
         if (error) throw error;
 
         let fetchedOrders = data || [];
         let hasExpiredUpdates = false;
-
         const now = new Date().getTime();
+
         fetchedOrders = await Promise.all(
           fetchedOrders.map(async (order) => {
             if (order.status === "PENDING_PAYMENT" || order.status === "PENDING") {
@@ -122,14 +125,11 @@ export default function ProfilePage() {
               }
             }
             return order;
-          }),
+          })
         );
 
         if (hasExpiredUpdates) {
-          addToast(
-            "Beberapa pesanan telah dibatalkan otomatis karena melewati batas waktu pembayaran.",
-            "info",
-          );
+          addToast("Beberapa pesanan telah dibatalkan otomatis karena melewati batas waktu pembayaran.", "info");
         }
 
         setOrders(fetchedOrders);
@@ -166,7 +166,6 @@ export default function ProfilePage() {
 
       if (error) throw error;
 
-      // Update state global di Zustand agar UI langsung berubah tanpa refresh
       updateUserProfile({
         name: profileForm.name,
         phone_number: profileForm.phone_number,
@@ -231,17 +230,10 @@ export default function ProfilePage() {
           .eq("id", orderId);
         if (error) throw error;
 
-        let itemsToRestore =
-          typeof targetOrder.items === "string"
-            ? JSON.parse(targetOrder.items)
-            : targetOrder.items;
+        let itemsToRestore = typeof targetOrder.items === "string" ? JSON.parse(targetOrder.items) : targetOrder.items;
         await restoreOrderStock(itemsToRestore);
 
-        setOrders(
-          orders.map((o) =>
-            o.id === orderId ? { ...o, status: "CANCELED" } : o,
-          ),
-        );
+        setOrders(orders.map((o) => o.id === orderId ? { ...o, status: "CANCELED" } : o));
         addToast(`Pesanan berhasil dibatalkan. Stok dikembalikan.`, "success");
         setConfirmModal({ ...confirmModal, isOpen: false });
       } catch {
@@ -259,15 +251,8 @@ export default function ProfilePage() {
           .eq("id", orderId);
         if (error) throw error;
 
-        setOrders(
-          orders.map((o) =>
-            o.id === orderId ? { ...o, status: "COMPLETED" } : o,
-          ),
-        );
-        addToast(
-          `Pesanan Selesai! Silakan berikan ulasan Anda di halaman produk.`,
-          "success",
-        );
+        setOrders(orders.map((o) => o.id === orderId ? { ...o, status: "COMPLETED" } : o));
+        addToast(`Pesanan Selesai! Silakan berikan ulasan Anda di halaman produk.`, "success");
         setConfirmModal({ ...confirmModal, isOpen: false });
       } catch {
         addToast("Gagal menyelesaikan pesanan.", "error");
@@ -277,86 +262,51 @@ export default function ProfilePage() {
     }
   };
 
-  const formatRupiah = (number) =>
-    new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(number);
+  const formatRupiah = (number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(number);
   
-  const formatDate = (dateString) =>
-    new Date(dateString).toLocaleDateString("id-ID", {
-      year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit"
-    });
+  const formatDate = (dateString) => new Date(dateString).toLocaleDateString("id-ID", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" });
   
   const getDueDate = (createdAt) => {
     const date = new Date(new Date(createdAt).getTime() + PAYMENT_TIMEOUT_MS);
-    return date.toLocaleDateString("id-ID", {
-      year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"
-    });
+    return date.toLocaleDateString("id-ID", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   };
 
   const getStatusBadge = (status) => {
     switch (status?.toUpperCase()) {
       case "PAID":
       case "SUCCESS":
-        return (
-          <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs font-bold w-fit">
-            <CheckCircle className="w-3.5 h-3.5" /> LUNAS
-          </span>
-        );
+        return <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs font-bold w-fit"><CheckCircle className="w-3.5 h-3.5" /> LUNAS</span>;
       case "PROCESSING":
-        return (
-          <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-bold w-fit">
-            <Package className="w-3.5 h-3.5" /> SEDANG DIKEMAS
-          </span>
-        );
+        return <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-bold w-fit"><Package className="w-3.5 h-3.5" /> SEDANG DIKEMAS</span>;
       case "DIKIRIM":
       case "SHIPPED":
-        return (
-          <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold w-fit">
-            <Truck className="w-3.5 h-3.5" /> DIKIRIM
-          </span>
-        );
+        return <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold w-fit"><Truck className="w-3.5 h-3.5" /> DIKIRIM</span>;
       case "COMPLETED":
-        return (
-          <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold w-fit">
-            <ShieldCheck className="w-3.5 h-3.5" /> SELESAI
-          </span>
-        );
+        return <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold w-fit"><ShieldCheck className="w-3.5 h-3.5" /> SELESAI</span>;
       case "PENDING_PAYMENT":
       case "PENDING":
-        return (
-          <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-bold w-fit">
-            <Clock className="w-3.5 h-3.5" /> MENUNGGU PEMBAYARAN
-          </span>
-        );
+        return <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-bold w-fit"><Clock className="w-3.5 h-3.5" /> MENUNGGU PEMBAYARAN</span>;
       case "CANCELED":
-        return (
-          <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-500 text-xs font-bold w-fit">
-            <XCircle className="w-3.5 h-3.5" /> DIBATALKAN
-          </span>
-        );
+        return <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-500 text-xs font-bold w-fit"><XCircle className="w-3.5 h-3.5" /> DIBATALKAN</span>;
       case "EXPIRED":
       case "FAILED":
-        return (
-          <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-100 text-red-700 text-xs font-bold w-fit">
-            <AlertTriangle className="w-3.5 h-3.5" /> KEDALUWARSA
-          </span>
-        );
+        return <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-100 text-red-700 text-xs font-bold w-fit"><AlertTriangle className="w-3.5 h-3.5" /> KEDALUWARSA</span>;
       default:
-        return (
-          <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-bold w-fit">
-            {status}
-          </span>
-        );
+        return <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-bold w-fit">{status}</span>;
     }
   };
 
-  if (!isClient || !isInitialized || !user) return <div className="min-h-screen bg-background pt-8 pb-24"></div>;
-  if (user.role === "admin") {
-    router.push("/admin");
-    return null;
+  // LAYAR LOADING SAAT MENGECEK SESI LOGIKA AUTH
+  if (!isClient || !isInitialized || !user) {
+    return (
+      <div className="min-h-screen bg-background pt-20 pb-24 flex justify-center items-center">
+        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
   }
 
   return (
-    <main className="min-h-screen bg-background pt-8 pb-24 px-4 sm:px-6 max-w-7xl mx-auto">
+    <main className="min-h-screen bg-background pt-20 pb-24 px-4 sm:px-6 max-w-7xl mx-auto">
       <div className="flex items-center gap-3 mb-10">
         <h1 className="text-3xl md:text-4xl font-black tracking-tight text-foreground">
           Akun Saya
@@ -405,9 +355,7 @@ export default function ProfilePage() {
         {/* KOLOM KANAN: Konten Tab */}
         <div className="lg:col-span-9">
           
-          {/* ========================================================
-              TAB PESANAN SAYA
-          ======================================================== */}
+          {/* TAB PESANAN SAYA */}
           {activeTab === "orders" && (
             <div className="animate-in fade-in duration-500">
               <h2 className="text-xl font-bold tracking-tight text-foreground mb-6">
@@ -432,10 +380,7 @@ export default function ProfilePage() {
                   <p className="text-foreground/60 mb-8 max-w-sm">
                     Anda belum melakukan transaksi apa pun. Yuk, wujudkan gaya urban Anda sekarang!
                   </p>
-                  <Link
-                    href="/katalog"
-                    className="bg-blue-600 text-white px-8 py-3 rounded-full font-bold hover:bg-blue-700 transition-all active:scale-95"
-                  >
+                  <Link href="/katalog" className="bg-blue-600 text-white px-8 py-3 rounded-full font-bold hover:bg-blue-700 transition-all active:scale-95">
                     Mulai Belanja
                   </Link>
                 </div>
@@ -453,11 +398,7 @@ export default function ProfilePage() {
                     const isDikirim = order.status === "DIKIRIM" || order.status === "SHIPPED";
 
                     return (
-                      <div
-                        key={order.id}
-                        className={`bg-white dark:bg-slate-900 border rounded-3xl p-6 shadow-sm transition-all ${isPending ? "border-amber-200 dark:border-amber-900/50 shadow-amber-900/5" : isDikirim ? "border-blue-200 dark:border-blue-900/50" : "border-slate-200 dark:border-slate-800"}`}
-                      >
-                        {/* Header Pesanan */}
+                      <div key={order.id} className={`bg-white dark:bg-slate-900 border rounded-3xl p-6 shadow-sm transition-all ${isPending ? "border-amber-200 dark:border-amber-900/50 shadow-amber-900/5" : isDikirim ? "border-blue-200 dark:border-blue-900/50" : "border-slate-200 dark:border-slate-800"}`}>
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-100 dark:border-slate-800 pb-4 mb-4 gap-4">
                           <div>
                             <p className="text-xs text-foreground/50 uppercase tracking-widest mb-1">
@@ -471,16 +412,13 @@ export default function ProfilePage() {
                             </div>
                           </div>
                           <div className="text-left md:text-right">
-                            <p className="text-xs text-foreground/50 uppercase tracking-widest mb-1">
-                              Total Belanja
-                            </p>
+                            <p className="text-xs text-foreground/50 uppercase tracking-widest mb-1">Total Belanja</p>
                             <p className="font-black text-blue-600 dark:text-blue-400 text-lg">
                               {formatRupiah(order.total_amount)}
                             </p>
                           </div>
                         </div>
 
-                        {/* List Barang */}
                         <div className="space-y-4">
                           {items.map((item, idx) => (
                             <div key={idx} className="flex items-center gap-4 bg-slate-50/50 dark:bg-slate-800/20 p-3 rounded-2xl border border-transparent dark:border-slate-800/50">
@@ -497,7 +435,6 @@ export default function ProfilePage() {
                               <div className="text-right shrink-0">
                                 <p className="text-sm font-bold text-foreground">{item.quantity}x</p>
                                 <p className="text-xs font-bold text-foreground/60 mt-1">
-                                  {/* Gunakan recordedPrice jika ada (dari checkout diskon), jika tidak fallback ke price */}
                                   {formatRupiah(item.recordedPrice ?? item.final_price ?? item.price)}
                                 </p>
                               </div>
@@ -505,7 +442,6 @@ export default function ProfilePage() {
                           ))}
                         </div>
 
-                        {/* Aksi untuk PENDING */}
                         {isPending && (
                           <div className="mt-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-amber-50 dark:bg-amber-900/10 p-4 rounded-2xl border border-amber-100 dark:border-amber-900/20">
                             <div>
@@ -517,32 +453,19 @@ export default function ProfilePage() {
                               </p>
                             </div>
                             <div className="flex items-center gap-3 w-full sm:w-auto">
-                              <button
-                                onClick={() => promptCancelOrder(order.id, order.invoice_number)}
-                                className="flex-1 sm:flex-none bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 px-5 py-2.5 rounded-full font-bold text-sm hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-all"
-                              >
+                              <button onClick={() => promptCancelOrder(order.id, order.invoice_number)} className="flex-1 sm:flex-none bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 px-5 py-2.5 rounded-full font-bold text-sm hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-all">
                                 Batalkan
                               </button>
-                              <button
-                                onClick={() => {
-                                  if (order.payment_url) window.location.href = order.payment_url;
-                                  else addToast("Link pembayaran tidak ditemukan. Silakan hubungi CS Warhope.", "error");
-                                }}
-                                className="flex-1 sm:flex-none bg-blue-600 text-white px-5 py-2.5 rounded-full font-bold text-sm hover:bg-blue-700 transition-all shadow-md shadow-blue-600/20 flex items-center justify-center gap-2"
-                              >
+                              <button onClick={() => { if (order.payment_url) window.location.href = order.payment_url; else addToast("Link pembayaran tidak ditemukan. Silakan hubungi CS Warhope.", "error"); }} className="flex-1 sm:flex-none bg-blue-600 text-white px-5 py-2.5 rounded-full font-bold text-sm hover:bg-blue-700 transition-all shadow-md shadow-blue-600/20 flex items-center justify-center gap-2">
                                 <CreditCard className="w-4 h-4" /> Bayar
                               </button>
                             </div>
                           </div>
                         )}
 
-                        {/* Aksi untuk DIKIRIM */}
                         {isDikirim && (
                           <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-4">
-                            <button
-                              onClick={() => promptCompleteOrder(order.id, order.invoice_number)}
-                              className="w-full sm:w-auto bg-green-600 text-white px-6 py-3 rounded-full font-bold text-sm hover:bg-green-700 transition-all shadow-md active:scale-95"
-                            >
+                            <button onClick={() => promptCompleteOrder(order.id, order.invoice_number)} className="w-full sm:w-auto bg-green-600 text-white px-6 py-3 rounded-full font-bold text-sm hover:bg-green-700 transition-all shadow-md active:scale-95">
                               <CheckCircle className="w-4 h-4 inline-block mr-2" /> Pesanan Diterima
                             </button>
                           </div>
@@ -563,9 +486,7 @@ export default function ProfilePage() {
             </div>
           )}
 
-          {/* ========================================================
-              TAB PENGATURAN AKUN
-          ======================================================== */}
+          {/* TAB PENGATURAN AKUN */}
           {activeTab === "settings" && (
             <div className="animate-in fade-in duration-500">
               <h2 className="text-xl font-bold tracking-tight text-foreground mb-6">
@@ -574,84 +495,41 @@ export default function ProfilePage() {
               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 md:p-8 shadow-sm space-y-6">
                 
                 <div>
-                  <label className="text-xs font-bold text-foreground/60 uppercase tracking-widest block mb-2">
-                    Nama Lengkap
-                  </label>
+                  <label className="text-xs font-bold text-foreground/60 uppercase tracking-widest block mb-2">Nama Lengkap</label>
                   <div className="flex items-center bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3">
                     <User className="w-5 h-5 text-slate-400 mr-3" />
-                    <input
-                      type="text"
-                      name="name"
-                      value={profileForm.name}
-                      onChange={handleProfileChange}
-                      className="bg-transparent w-full outline-none text-foreground text-sm font-medium"
-                    />
+                    <input type="text" name="name" value={profileForm.name} onChange={handleProfileChange} className="bg-transparent w-full outline-none text-foreground text-sm font-medium" />
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-foreground/60 uppercase tracking-widest block mb-2">
-                    Alamat Email
-                  </label>
+                  <label className="text-xs font-bold text-foreground/60 uppercase tracking-widest block mb-2">Alamat Email</label>
                   <div className="flex items-center bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 opacity-70 cursor-not-allowed">
                     <Mail className="w-5 h-5 text-slate-400 mr-3" />
-                    <input
-                      type="email"
-                      value={user.email || ""}
-                      readOnly
-                      className="bg-transparent w-full outline-none text-foreground text-sm font-medium cursor-not-allowed"
-                    />
+                    <input type="email" value={user.email || ""} readOnly className="bg-transparent w-full outline-none text-foreground text-sm font-medium cursor-not-allowed" />
                   </div>
-                  <p className="text-[10px] text-slate-500 mt-2">
-                    *Email terikat dengan identitas masuk dan tidak dapat diubah.
-                  </p>
+                  <p className="text-[10px] text-slate-500 mt-2">*Email terikat dengan identitas masuk dan tidak dapat diubah.</p>
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-foreground/60 uppercase tracking-widest block mb-2">
-                    Nomor Telepon / WhatsApp
-                  </label>
+                  <label className="text-xs font-bold text-foreground/60 uppercase tracking-widest block mb-2">Nomor Telepon / WhatsApp</label>
                   <div className="flex items-center bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3">
                     <Phone className="w-5 h-5 text-slate-400 mr-3" />
-                    <input
-                      type="tel"
-                      name="phone_number"
-                      value={profileForm.phone_number}
-                      onChange={handleProfileChange}
-                      placeholder="Contoh: 081234567890"
-                      className="bg-transparent w-full outline-none text-foreground text-sm font-medium"
-                    />
+                    <input type="tel" name="phone_number" value={profileForm.phone_number} onChange={handleProfileChange} placeholder="Contoh: 081234567890" className="bg-transparent w-full outline-none text-foreground text-sm font-medium" />
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-foreground/60 uppercase tracking-widest block mb-2">
-                    Alamat Pengiriman Utama
-                  </label>
+                  <label className="text-xs font-bold text-foreground/60 uppercase tracking-widest block mb-2">Alamat Pengiriman Utama</label>
                   <div className="flex items-start bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3">
                     <MapPin className="w-5 h-5 text-slate-400 mr-3 mt-0.5" />
-                    <textarea
-                      rows={3}
-                      name="address"
-                      value={profileForm.address}
-                      onChange={handleProfileChange}
-                      placeholder="Masukkan alamat lengkap (Jalan, RT/RW, Kelurahan, Kecamatan, Kota, Kode Pos)"
-                      className="bg-transparent w-full outline-none text-foreground text-sm font-medium resize-none"
-                    ></textarea>
+                    <textarea rows={3} name="address" value={profileForm.address} onChange={handleProfileChange} placeholder="Masukkan alamat lengkap (Jalan, RT/RW, Kelurahan, Kecamatan, Kota, Kode Pos)" className="bg-transparent w-full outline-none text-foreground text-sm font-medium resize-none"></textarea>
                   </div>
                 </div>
 
                 <div className="pt-6 border-t border-slate-100 dark:border-slate-800 flex justify-end">
-                  <button 
-                    onClick={handleSaveProfile}
-                    disabled={isSavingProfile}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-full font-bold transition-all shadow-md active:scale-95 disabled:opacity-70 flex items-center gap-2"
-                  >
-                    {isSavingProfile ? (
-                      <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Menyimpan...</>
-                    ) : (
-                      <><Save className="w-4 h-4" /> Simpan Perubahan</>
-                    )}
+                  <button onClick={handleSaveProfile} disabled={isSavingProfile} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-full font-bold transition-all shadow-md active:scale-95 disabled:opacity-70 flex items-center gap-2">
+                    {isSavingProfile ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Menyimpan...</> : <><Save className="w-4 h-4" /> Simpan Perubahan</>}
                   </button>
                 </div>
               </div>
@@ -660,43 +538,19 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* ========================================================
-          MODAL CUSTOM UNTUK KONFIRMASI LOGOUT & BATAL PESANAN
-      ======================================================== */}
+      {/* MODAL CUSTOM UNTUK KONFIRMASI LOGOUT & BATAL PESANAN */}
       {confirmModal.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6 text-center">
-              <div
-                className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${confirmModal.type === "logout" ? "bg-amber-100 dark:bg-amber-900/30 text-amber-600" : confirmModal.type === "complete_order" ? "bg-green-100 dark:bg-green-900/30 text-green-600" : "bg-red-100 dark:bg-red-900/30 text-red-600"}`}
-              >
-                {confirmModal.type === "logout" ? (
-                  <LogOut className="w-8 h-8" />
-                ) : confirmModal.type === "complete_order" ? (
-                  <CheckCircle className="w-8 h-8" />
-                ) : (
-                  <AlertCircle className="w-8 h-8" />
-                )}
+              <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${confirmModal.type === "logout" ? "bg-amber-100 dark:bg-amber-900/30 text-amber-600" : confirmModal.type === "complete_order" ? "bg-green-100 dark:bg-green-900/30 text-green-600" : "bg-red-100 dark:bg-red-900/30 text-red-600"}`}>
+                {confirmModal.type === "logout" ? <LogOut className="w-8 h-8" /> : confirmModal.type === "complete_order" ? <CheckCircle className="w-8 h-8" /> : <AlertCircle className="w-8 h-8" />}
               </div>
-              <h3 className="text-xl font-bold text-foreground mb-2">
-                {confirmModal.title}
-              </h3>
-              <p className="text-foreground/60 text-sm mb-8 whitespace-pre-line leading-relaxed">
-                {confirmModal.message}
-              </p>
-
+              <h3 className="text-xl font-bold text-foreground mb-2">{confirmModal.title}</h3>
+              <p className="text-foreground/60 text-sm mb-8 whitespace-pre-line leading-relaxed">{confirmModal.message}</p>
               <div className="flex gap-3 w-full">
-                <button
-                  onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })}
-                  className="flex-1 py-3 rounded-full font-bold bg-slate-100 dark:bg-slate-800 text-foreground hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                >
-                  Batal
-                </button>
-                <button
-                  onClick={executeConfirmAction}
-                  disabled={isProcessingAction}
-                  className={`flex-1 py-3 rounded-full font-bold text-white transition-colors disabled:opacity-70 shadow-lg ${confirmModal.type === "logout" ? "bg-amber-600 hover:bg-amber-700 shadow-amber-600/20" : confirmModal.type === "complete_order" ? "bg-green-600 hover:bg-green-700 shadow-green-600/20" : "bg-red-600 hover:bg-red-700 shadow-red-600/20"}`}
-                >
+                <button onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })} className="flex-1 py-3 rounded-full font-bold bg-slate-100 dark:bg-slate-800 text-foreground hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">Batal</button>
+                <button onClick={executeConfirmAction} disabled={isProcessingAction} className={`flex-1 py-3 rounded-full font-bold text-white transition-colors disabled:opacity-70 shadow-lg ${confirmModal.type === "logout" ? "bg-amber-600 hover:bg-amber-700 shadow-amber-600/20" : confirmModal.type === "complete_order" ? "bg-green-600 hover:bg-green-700 shadow-green-600/20" : "bg-red-600 hover:bg-red-700 shadow-red-600/20"}`}>
                   {isProcessingAction ? "Memproses..." : "Ya, Lanjutkan"}
                 </button>
               </div>

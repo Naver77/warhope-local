@@ -4,27 +4,20 @@ import { supabaseAdmin } from '../../../../lib/supabase'; // Pastikan path ini b
 
 export async function POST(req) {
   try {
-    // 1. AMBIL HEADERS UNTUK VALIDASI KEAMANAN DOKU
     const clientId = req.headers.get('client-id');
     const requestId = req.headers.get('request-id');
     const requestTimestamp = req.headers.get('request-timestamp');
-    const signatureHeader = req.headers.get('signature'); // Contoh format: HMACSHA256=...
+    const signatureHeader = req.headers.get('signature'); 
     
-    // Ambil raw body text untuk validasi signature (jangan di-parse JSON dulu)
     const rawBody = await req.text();
     const body = JSON.parse(rawBody);
 
-    // 2. VALIDASI SIGNATURE JOKUL DOKU (Keamanan Level Bank)
     const secretKey = process.env.DOKU_SECRET_KEY || '';
     if (secretKey && signatureHeader) {
-      // Buat Digest (Base64 dari SHA256 raw body)
       const digest = crypto.createHash('sha256').update(rawBody, 'utf8').digest('base64');
-      
-      // Susun komponen signature sesuai standar DOKU
-      const requestTarget = '/api/webhook/doku'; // Sesuaikan dengan path endpoint Anda di Doku Dashboard
+      const requestTarget = '/api/webhook/doku'; 
       const signatureString = `Client-Id:${clientId}\nRequest-Id:${requestId}\nRequest-Timestamp:${requestTimestamp}\nRequest-Target:${requestTarget}\nDigest:${digest}`;
       
-      // Generate HMAC
       const expectedSignature = crypto.createHmac('sha256', secretKey).update(signatureString).digest('base64');
       const finalExpectedSignature = `HMACSHA256=${expectedSignature}`;
 
@@ -35,14 +28,20 @@ export async function POST(req) {
     }
 
     const invoiceNumber = body?.order?.invoice_number;
-    if (!invoiceNumber) {
-      return NextResponse.json({ error: "Payload tidak valid." }, { status: 400 });
+    const paymentStatus = body?.transaction?.status; // 'SUCCESS', 'FAILED', atau 'EXPIRED' dari DOKU
+
+    if (!invoiceNumber || !paymentStatus) {
+      return NextResponse.json({ error: "Payload tidak lengkap." }, { status: 400 });
     }
 
-    // 3. IDEMPOTENCY CHECK (Cek Status Pesanan Saat Ini)
+    // Ambil Data Order dan Items-nya (Kita butuh Items untuk mengembalikan stok jika gagal)
     const { data: orderData, error: orderError } = await supabaseAdmin
       .from('orders')
-      .select('id, status')
+      .select(`
+        id, 
+        status,
+        order_items ( product_id, quantity, selected_size )
+      `)
       .eq('invoice_number', invoiceNumber)
       .single();
 
@@ -50,23 +49,54 @@ export async function POST(req) {
       return NextResponse.json({ error: "Pesanan tidak ditemukan." }, { status: 404 });
     }
 
-    // Jika sudah dibayar atau diproses, hentikan agar tidak ada update redundant
-    if (orderData.status === 'PAID' || orderData.status === 'PROCESSING' || orderData.status === 'SHIPPED' || orderData.status === 'COMPLETED') {
-      return NextResponse.json({ message: "Pesanan sudah diproses sebelumnya. Webhook diabaikan." }, { status: 200 });
+    if (orderData.status === 'PAID' || orderData.status === 'PROCESSING' || orderData.status === 'SHIPPED' || orderData.status === 'COMPLETED' || orderData.status === 'FAILED' || orderData.status === 'EXPIRED') {
+      return NextResponse.json({ message: "Status pesanan sudah final. Webhook diabaikan." }, { status: 200 });
     }
 
-    // 4. UPDATE STATUS PESANAN JADI 'PAID'
-    // Logika pemotongan stok dihapus dari sini karena sudah ditangani saat Checkout (createOrder).
-    const { error: updateError } = await supabaseAdmin
-      .from('orders')
-      .update({ status: 'PAID' })
-      .eq('invoice_number', invoiceNumber);
+    // ==========================================
+    // SKENARIO 1: PEMBAYARAN BERHASIL
+    // ==========================================
+    if (paymentStatus === 'SUCCESS') {
+      const { error: updateError } = await supabaseAdmin
+        .from('orders')
+        .update({ status: 'PAID' })
+        .eq('invoice_number', invoiceNumber);
 
-    if (updateError) {
-      throw updateError;
+      if (updateError) throw updateError;
+      return NextResponse.json({ message: "Pesanan dibayar (PAID)." }, { status: 200 });
+    } 
+
+    // ==========================================
+    // SKENARIO 2: PEMBAYARAN GAGAL / EXPIRED
+    // ==========================================
+    else if (paymentStatus === 'FAILED' || paymentStatus === 'EXPIRED') {
+      
+      // A. Ubah status pesanan menjadi Failed/Expired
+      const { error: updateError } = await supabaseAdmin
+        .from('orders')
+        .update({ status: paymentStatus })
+        .eq('invoice_number', invoiceNumber);
+      
+      if (updateError) throw updateError;
+
+      // B. KEMBALIKAN STOK BARANG (Rollback)
+      // Kita panggil manual di sini menggunakan RPC karena ini backend Node.js
+      if (orderData.order_items && orderData.order_items.length > 0) {
+        for (const item of orderData.order_items) {
+           // RPC increment ini kebalikan dari decrement yang kita buat sebelumnya.
+           // Kita perlu membuat fungsi RPC baru 'checkout_increment_stock' di Supabase.
+           await supabaseAdmin.rpc('checkout_increment_stock', {
+             p_product_id: item.product_id,
+             p_size: item.selected_size,
+             p_quantity: item.quantity
+           });
+        }
+      }
+
+      return NextResponse.json({ message: `Pesanan ${paymentStatus}. Stok dikembalikan.` }, { status: 200 });
     }
 
-    return NextResponse.json({ message: "Webhook berhasil diproses. Status pesanan menjadi PAID." }, { status: 200 });
+    return NextResponse.json({ message: "Status tidak dikenali, diabaikan." }, { status: 200 });
 
   } catch (error) {
     console.error("Error Webhook:", error);

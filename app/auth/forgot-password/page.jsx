@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { Mail, ArrowLeft, ShieldCheck, Send } from 'lucide-react';
 import { useToastStore } from '../../../store/toastStore';
+import { supabase } from '../../../lib/supabase'; // Pastikan path ini benar
 
 export default function ForgotPasswordPage() {
   const addToast = useToastStore((state) => state.addToast);
@@ -12,7 +13,7 @@ export default function ForgotPasswordPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSent, setIsSent] = useState(false);
 
-  const handleResetPassword = (e) => {
+  const handleResetPassword = async (e) => {
     e.preventDefault();
     
     if (!email.includes('@')) {
@@ -22,23 +23,33 @@ export default function ForgotPasswordPage() {
 
     setIsProcessing(true);
 
-    // Simulasi pengiriman email reset
-    setTimeout(() => {
-      setIsProcessing(false);
+    try {
+      // Memanggil fungsi reset Supabase
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        // Mengarahkan user ke halaman update password setelah klik link di email
+        redirectTo: `${window.location.origin}/auth/update-password`,
+      });
+
+      if (error) throw error;
+
       setIsSent(true);
       addToast('Tautan pemulihan kata sandi telah dikirim!', 'success');
-    }, 1500);
+    } catch (error) {
+      console.error("Reset Password Error:", error);
+      addToast(error.message === 'User not found' ? 'Email tidak terdaftar.' : 'Terjadi kesalahan. Coba lagi nanti.', 'error');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
+    // ... (Sisa UI sama persis dengan kode Anda sebelumnya)
     <main className="min-h-screen bg-background flex flex-col items-center justify-center p-4 relative">
-      
       <Link href="/auth/login" className="absolute top-8 left-8 flex items-center gap-2 text-sm font-bold text-foreground/50 hover:text-foreground transition-colors z-10">
         <ArrowLeft className="w-4 h-4" /> Kembali ke Login
       </Link>
 
       <div className="max-w-md w-full bg-white dark:bg-slate-800/50 rounded-3xl shadow-xl overflow-hidden border border-slate-200 dark:border-slate-800 p-8 animate-in zoom-in-95 duration-500 relative">
-        
         <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl -translate-y-10 translate-x-10 pointer-events-none"></div>
 
         <div className="text-center mb-8 relative z-10">

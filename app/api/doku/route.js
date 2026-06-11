@@ -23,16 +23,20 @@ export async function POST(req) {
     const invoiceNumber = `INVWH${Date.now()}`; 
     const originUrl = req.headers.get('origin') || 'http://localhost:3000';
 
-    // 1. Susun Line Items untuk DOKU
-    const lineItems = items.map((item, index) => ({
-      id: item.id || `ITEM-${index}`,
-      name: item.name.substring(0, 255),
-      price: Math.round(item.price),
-      quantity: item.quantity,
-      sku: item.id || `SKU-${index}`,
-      category: "clothing",
-      url: `${originUrl}/product/${item.id}`
-    }));
+    const lineItems = items.map((item, index) => {
+      // PERBAIKAN: Ambil harga final setelah diskon. Gunakan fallback harga asli jika tidak ada.
+      const itemFinalPrice = Number(item.finalPrice ?? item.final_price ?? item.price);
+      
+      return {
+        id: item.id || `ITEM-${index}`,
+        name: item.name.substring(0, 255),
+        price: Math.round(itemFinalPrice), // Gunakan harga final di sini
+        quantity: item.quantity,
+        sku: item.id || `SKU-${index}`,
+        category: "clothing",
+        url: `${originUrl}/product/${item.id}`
+      };
+    });
 
     if (shippingCost > 0) {
       lineItems.push({

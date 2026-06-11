@@ -15,7 +15,13 @@ export default function AdminLayout({ children }) {
   // STATE UNTUK MENGONTROL HALAMAN NOTIFIKASI RAKSASA
   const [showExitWarning, setShowExitWarning] = useState(false);
 
-  const isAdmin = user && (user.role === 'ADMIN' || user.role === 'admin');
+  // Menerima superadmin, admin_staff, dan admin (untuk kompatibilitas data lama)
+  const hasAdminAccess = user && (
+    user.role === 'superadmin' || 
+    user.role === 'admin_staff' || 
+    user.role === 'ADMIN' || 
+    user.role === 'admin'
+  );
 
   // Pasang Hook Keamanan. Jika user klik Back, showExitWarning menjadi TRUE
   usePreventNavigation(() => {
@@ -29,13 +35,12 @@ export default function AdminLayout({ children }) {
   useEffect(() => {
     if (isInitialized) {
       if (!user) {
-        // Gunakan replace agar instan dan tidak menumpuk history browser
         router.replace('/auth/login');
-      } else if (!isAdmin) {
+      } else if (!hasAdminAccess) { // Ubah di sini
         router.replace('/');
       }
     }
-  }, [isInitialized, user, isAdmin, router]);
+  }, [isInitialized, user, hasAdminAccess, router]); // Sesuaikan dependency array
 
   // Fungsi jika user memaksa ingin keluar
   const handleForceLeave = () => {
