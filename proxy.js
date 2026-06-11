@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
-export async function middleware(req) {
+// ✅ PERBAIKAN: Nama fungsi diubah dari 'middleware' menjadi 'proxy'
+export async function proxy(req) {
   const res = NextResponse.next();
   const { pathname } = req.nextUrl;
 
@@ -13,9 +14,6 @@ export async function middleware(req) {
     if (!supabaseSession) {
       return NextResponse.redirect(new URL('/auth/login', req.url));
     }
-    // PENJELASAN: Kita tidak mengecek 'role' di sini karena token JWT Supabase 
-    // standar tidak memuat role dari tabel public.users. 
-    // Pengecekan role akan dilakukan di sisi client (app/admin/layout.jsx).
   }
 
   // 3. Proteksi Halaman Auth (Mencegah user login masuk ke halaman login lagi)
