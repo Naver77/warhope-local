@@ -7,7 +7,6 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'images.unsplash.com',
       },
-      // Tambahkan domain Supabase Anda di sini
       {
         protocol: 'https',
         hostname: 'oeogemgxwszyjkxudlpq.supabase.co',

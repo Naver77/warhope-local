@@ -7,39 +7,18 @@ export async function middleware(req) {
   // 1. Ambil token/sesi Supabase dari cookies
   const supabaseSession = req.cookies.get('sb-access-token')?.value || req.cookies.get('supabase-auth-token')?.value;
 
-  // 2. Proteksi Halaman Admin
+  // 2. Proteksi Halaman Admin (Hanya cek Autentikasi)
   if (pathname.startsWith('/admin')) {
     // Jika tidak ada sesi login sama sekali, lempar ke halaman login
     if (!supabaseSession) {
       return NextResponse.redirect(new URL('/auth/login', req.url));
     }
-
-    try {
-      // Decode JWT token secara manual
-      const tokenParts = supabaseSession.split('.');
-      if (tokenParts.length !== 3) throw new Error("Token tidak valid");
-
-      const payload = JSON.parse(Buffer.from(tokenParts[1], 'base64').toString());
-      
-      const userRole = payload.app_metadata?.role || payload.user_metadata?.role || 'customer';
-
-      // ✅ PERBAIKAN: Gunakan array untuk mengecek semua varian role admin
-      const allowedAdminRoles = ['admin', 'admin_staff', 'superadmin'];
-      
-      // Jika role (dalam huruf kecil) tidak ada di daftar yang diizinkan, lempar ke beranda
-      if (!allowedAdminRoles.includes(userRole.toLowerCase())) {
-        return NextResponse.redirect(new URL('/', req.url));
-      }
-
-    } catch (error) {
-      console.error("Middleware Error:", error);
-      // Jika token rusak/kadaluarsa, paksa login ulang
-      req.cookies.delete('sb-access-token');
-      return NextResponse.redirect(new URL('/auth/login', req.url));
-    }
+    // PENJELASAN: Kita tidak mengecek 'role' di sini karena token JWT Supabase 
+    // standar tidak memuat role dari tabel public.users. 
+    // Pengecekan role akan dilakukan di sisi client (app/admin/layout.jsx).
   }
 
-  // 3. Proteksi Halaman Auth
+  // 3. Proteksi Halaman Auth (Mencegah user login masuk ke halaman login lagi)
   if (pathname.startsWith('/auth/login') || pathname.startsWith('/auth/register')) {
     if (supabaseSession) {
       return NextResponse.redirect(new URL('/', req.url));

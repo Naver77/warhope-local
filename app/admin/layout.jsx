@@ -15,13 +15,9 @@ export default function AdminLayout({ children }) {
   // STATE UNTUK MENGONTROL HALAMAN NOTIFIKASI RAKSASA
   const [showExitWarning, setShowExitWarning] = useState(false);
 
-  // Menerima superadmin, admin_staff, dan admin (untuk kompatibilitas data lama)
-  const hasAdminAccess = user && (
-    user.role === 'superadmin' || 
-    user.role === 'admin_staff' || 
-    user.role === 'ADMIN' || 
-    user.role === 'admin'
-  );
+  // Menerima superadmin, admin_staff, dan admin
+  const userRole = user?.role?.toLowerCase() || 'customer';
+  const hasAdminAccess = user && ['superadmin', 'admin_staff', 'admin'].includes(userRole);
 
   // Pasang Hook Keamanan. Jika user klik Back, showExitWarning menjadi TRUE
   usePreventNavigation(() => {
@@ -36,11 +32,12 @@ export default function AdminLayout({ children }) {
     if (isInitialized) {
       if (!user) {
         router.replace('/auth/login');
-      } else if (!hasAdminAccess) { // Ubah di sini
+      } else if (!hasAdminAccess) { 
+        // Jika login tapi bukan admin, kembalikan ke beranda
         router.replace('/');
       }
     }
-  }, [isInitialized, user, hasAdminAccess, router]); // Sesuaikan dependency array
+  }, [isInitialized, user, hasAdminAccess, router]);
 
   // Fungsi jika user memaksa ingin keluar
   const handleForceLeave = () => {
@@ -71,7 +68,8 @@ export default function AdminLayout({ children }) {
   }
 
   // 2. KOSONGKAN UI SAAT REDIRECT: Mencegah penyusup melihat UI Admin sesaat
-  if (!isAdmin) {
+  // PERBAIKAN: Menggunakan hasAdminAccess (sebelumnya salah variabel !isAdmin)
+  if (!hasAdminAccess) {
     return null;
   }
 
