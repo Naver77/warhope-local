@@ -5,6 +5,7 @@ import useSWR from 'swr';
 import { Star, MessageSquare, Trash2, Search, XCircle } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { useToastStore } from '../../../store/toastStore';
+import { useAuthStore } from '../../../store/authStore';
 import { formatDate } from '../utils';
 
 // OPTIMASI: Batasi kolom yang diambil untuk mempercepat performa kueri
@@ -20,11 +21,19 @@ const fetchAllReviews = async () => {
 
 export default function AdminReviewsPage() {
   const addToast = useToastStore((state) => state.addToast);
+  
+  // ✅ 1. Panggil sistem autentikasi Anda
+  const { user, isInitialized } = useAuthStore();
   const [searchTerm, setSearchTerm] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // ✅ 2. Buat kunci gembok untuk SWR
+  const userRole = user?.role?.toLowerCase() || "";
+  const hasAdminAccess = isInitialized && user && ["superadmin", "admin_staff", "admin"].includes(userRole);
+
   const { data: reviews = [], isLoading, error, mutate } = useSWR(
-    "admin-all-reviews-list",
+    // ✅ 3. SWR HANYA akan memuat data jika user sudah terbukti sebagai admin
+    hasAdminAccess ? "admin-all-reviews-list" : null,
     fetchAllReviews,
     {
       revalidateOnFocus: false,
@@ -59,6 +68,9 @@ export default function AdminReviewsPage() {
       setIsDeleting(false);
     }
   };
+
+  // ✅ 4. Tahan render UI sampai Zustand selesai memuat memori (Pencegahan UI berkedip)
+  if (!isInitialized) return null;
 
   // TAMPILKAN UI ERROR JIKA DATABASE BERMASALAH
   if (error) {

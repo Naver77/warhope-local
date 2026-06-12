@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Save, AlertCircle, UploadCloud, Image as ImageIcon, ChevronDown, Percent, Tag, Loader2 } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
@@ -5,12 +7,10 @@ import { useToastStore } from '../../../store/toastStore';
 import { supabase } from '../../../lib/supabase';
 import { addProduct, updateProduct } from '../../../lib/api';
 
-// initialForm sekarang tidak memiliki sizes statis
 const getInitialForm = () => ({ 
   id: '', name: '', category: '', price: '', discount: 0, weight: '500', description: '', image: '', sizes: {} 
 });
 
-// UPDATE: Tangkap prop masterSizes
 export default function ProductFormModal({ isOpen, onClose, mode, initialProduct, allCategories, masterSizes, onSuccess }) {
   const addToast = useToastStore((state) => state.addToast);
   
@@ -20,35 +20,66 @@ export default function ProductFormModal({ isOpen, onClose, mode, initialProduct
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [processStep, setProcessStep] = useState(''); 
-  const isProcessing = processStep !== '';
+  const [isFetchingDetail, setIsFetchingDetail] = useState(false); // ✅ State loading saat menarik data lengkap
   const [discardModalOpen, setDiscardModalOpen] = useState(false);
+  
+  const isProcessing = processStep !== '' || isFetchingDetail;
 
   useEffect(() => {
     setProcessStep(''); 
 
-    if (isOpen) {
-      // 1. RAKIT UKURAN DASAR DINAMIS DARI DATABASE
+    const prepareModalData = async () => {
+      if (!isOpen) {
+        setFormData(getInitialForm());
+        setOriginalData(getInitialForm());
+        setImageFile(null);
+        setImagePreview(null);
+        setDiscardModalOpen(false);
+        return;
+      }
+
+      // ✅ 1. SISTEM PENYELAMAT UKURAN: Jika SWR gagal/lambat, gunakan fallback S-XXL
+      const safeMasterSizes = masterSizes?.length > 0 ? masterSizes : ['S', 'M', 'L', 'XL', 'XXL'];
       const dynamicBaseSizes = {};
-      masterSizes.forEach(sizeName => {
+      safeMasterSizes.forEach(sizeName => {
         dynamicBaseSizes[sizeName] = { active: false, stock: 0 };
       });
 
       let targetData = getInitialForm();
       targetData.sizes = { ...dynamicBaseSizes };
       
-      if (mode === 'edit' && initialProduct) {
-        let productSizes = initialProduct.sizes;
+      if (mode === 'edit' && initialProduct?.id) {
+        setIsFetchingDetail(true);
+        let dbProduct = { ...initialProduct };
+
+        // ✅ 2. TEMBAK DATABASE SECARA MANDIRI: Memastikan "description" dan "sizes" 100% utuh ditarik
+        try {
+          const { data, error } = await supabase
+            .from('products')
+            .select('*')
+            .eq('id', initialProduct.id)
+            .single();
+
+          if (data && !error) dbProduct = data;
+        } catch (e) {
+          console.error("Gagal menarik data lengkap:", e);
+        } finally {
+          setIsFetchingDetail(false);
+        }
+
+        let productSizes = dbProduct.sizes;
 
         if (typeof productSizes === 'string') {
           try { productSizes = JSON.parse(productSizes); } catch {}
         }
 
-        // 2. GABUNGKAN DATA DATABASE DENGAN DATA PRODUK
+        // ✅ 3. GABUNGKAN DATA STOK DENGAN KOTAK UKURAN (Toleransi huruf besar/kecil)
         if (typeof productSizes === 'object' && productSizes !== null && !Array.isArray(productSizes)) {
            Object.keys(productSizes).forEach(key => {
-             // Jika ukuran ini ada di tabel master_sizes, muat datanya
-             if(dynamicBaseSizes[key] !== undefined) {
-               dynamicBaseSizes[key] = {
+             // Cari ukuran yang cocok agar tidak sensitif case (misal 's' akan masuk ke 'S')
+             const matchedKey = safeMasterSizes.find(s => s.toLowerCase() === key.toLowerCase());
+             if (matchedKey) {
+               dynamicBaseSizes[matchedKey] = {
                  active: productSizes[key].active || false,
                  stock: parseInt(productSizes[key].stock) || 0
                }
@@ -57,26 +88,22 @@ export default function ProductFormModal({ isOpen, onClose, mode, initialProduct
         }
 
         targetData = { 
-          ...initialProduct, 
+          ...dbProduct, 
           sizes: dynamicBaseSizes,
-          weight: initialProduct.weight?.toString() || '500',
-          discount: parseInt(initialProduct.discount) || 0,
-          description: initialProduct.description || '' 
+          weight: dbProduct.weight?.toString() || '500',
+          discount: parseInt(dbProduct.discount) || 0,
+          description: dbProduct.description || '' 
         };
-        setImagePreview(initialProduct.image);
+        setImagePreview(dbProduct.image);
       } else if (mode === 'add') {
         targetData.category = allCategories[0] || '';
       }
       
       setFormData(targetData);
       setOriginalData(targetData);
-    } else {
-      setFormData(getInitialForm());
-      setOriginalData(getInitialForm());
-      setImageFile(null);
-      setImagePreview(null);
-      setDiscardModalOpen(false);
-    }
+    };
+
+    prepareModalData();
   }, [isOpen, mode, initialProduct, allCategories, masterSizes]);
 
   const isDirty = useMemo(() => {
@@ -128,13 +155,11 @@ export default function ProductFormModal({ isOpen, onClose, mode, initialProduct
     const file = e.target.files[0];
     if (!file) return;
     
-    // 1. VALIDASI UKURAN MAKSIMAL 2MB (2 * 1024 * 1024 bytes)
     if (file.size > 2 * 1024 * 1024) { 
       addToast('Ukuran file terlalu besar! Maksimal 2MB.', 'error'); 
       return; 
     }
     
-    // 2. VALIDASI FORMAT GAMBAR
     if (!file.type.startsWith('image/')) { 
       addToast('Format file tidak didukung! Gunakan gambar.', 'error'); 
       return; 
@@ -181,38 +206,33 @@ export default function ProductFormModal({ isOpen, onClose, mode, initialProduct
 
       let finalImageUrl = formData.image;
 
-      // PROSES 1: KOMPRESI & UPLOAD GAMBAR (VERSI ULTRA FAST)
       if (imageFile) {
         setProcessStep('compress'); 
         
-        // Konfigurasi kompresi yang dioptimalkan untuk file awal <= 2MB
         const options = {
-          maxSizeMB: 0.5,            // Targetkan hasil akhir maksimal 500KB (biasanya hasilnya akan jauh di bawah ini)
-          maxWidthOrHeight: 1000,    // Batasi dimensi agar tidak ada foto raksasa yang merusak layout UI
-          useWebWorker: true,        // Gunakan thread latar belakang agar browser tidak lag
-          fileType: 'image/webp',    // PAKSA konversi ke format .webp
-          initialQuality: 0.8,       // Langsung tembak di kualitas 80% (sekali jalan, tanpa iterasi berulang)
+          maxSizeMB: 0.5,
+          maxWidthOrHeight: 1000,
+          useWebWorker: true,
+          fileType: 'image/webp',
+          initialQuality: 0.8,
           alwaysKeepResolution: false 
         };
 
-        // Karena file awal sudah dibatasi 2MB dan quality langsung diset 80%, proses ini akan instan
         const compressedBlob = await imageCompression(imageFile, options);
         
         setProcessStep('upload'); 
         const fileName = `${formData.id}-${Date.now()}.webp`;
         
-        // Kirim hasil kompresi berformat .webp ke Supabase Storage
         const { error: uploadError } = await supabase.storage
           .from('products')
           .upload(fileName, compressedBlob, { 
             contentType: 'image/webp',
-            cacheControl: '31536000', // Cache 1 tahun
-            upsert: false 
+            cacheControl: '31536000',
+            upsert: false
           });
 
         if (uploadError) throw new Error(`Gagal upload gambar: ${uploadError.message}`);
 
-        // Dapatkan Public URL untuk disimpan ke dalam tabel 'products'
         const { data: { publicUrl } } = supabase.storage.from('products').getPublicUrl(fileName);
         finalImageUrl = publicUrl;
       }
@@ -265,10 +285,16 @@ export default function ProductFormModal({ isOpen, onClose, mode, initialProduct
 
   return (
     <div className="fixed inset-0 z-140 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-      {/* ... SISA UI MODAL (Header, Input Gambar, Input Nama, Harga) SAMA PERSIS SEPERTI SEBELUMNYA ... */}
-      
-      {/* Saya sertakan bagian render grid sizes agar Anda melihat ia me-loop object dinamis */}
-      <div className="bg-white dark:bg-slate-800 w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+      <div className="bg-white dark:bg-slate-800 w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] relative">
+        
+        {/* LAYAR LOADING INTERNAL (Tampil saat menarik data deskripsi & sizes dari DB) */}
+        {isFetchingDetail && (
+          <div className="absolute inset-0 z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm flex flex-col items-center justify-center">
+            <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
+            <p className="font-bold text-slate-700 dark:text-slate-300">Menarik data lengkap dari server...</p>
+          </div>
+        )}
+
         {/* Header Modal */}
         <div className="relative z-20 flex justify-between items-center p-6 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shrink-0 shadow-sm">
           <h3 className="text-xl font-bold text-foreground flex items-center gap-2">
@@ -294,7 +320,7 @@ export default function ProductFormModal({ isOpen, onClose, mode, initialProduct
                     <div className="p-4 flex flex-col items-center">
                       <ImageIcon className="w-10 h-10 text-slate-300 dark:text-slate-600 mb-3 group-hover:text-blue-500 transition-colors" />
                       <p className="text-sm font-bold text-foreground">Klik untuk Upload</p>
-                      <p className="text-[10px] text-slate-500 mt-1">Otomatis WebP (Max 5MB)</p>
+                      <p className="text-[10px] text-slate-500 mt-1">Otomatis WebP (Max 2MB)</p>
                     </div>
                   )}
                   {imagePreview && !isProcessing && (
@@ -376,7 +402,7 @@ export default function ProductFormModal({ isOpen, onClose, mode, initialProduct
                 <div>
                   <label className="text-xs font-bold text-foreground/60 uppercase tracking-widest mb-4 flex items-center justify-between">
                     Manajemen Varian & Stok Fisik
-                    <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-2 py-1 rounded-md lowercase tracking-normal">Stok global otomatis dijumlahkan.</span>
+                    <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-2 py-1 rounded-md lowercase tracking-normal text-[10px] sm:text-xs">Stok global otomatis dijumlahkan.</span>
                   </label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {Object.keys(formData.sizes).map(size => {
@@ -429,8 +455,8 @@ export default function ProductFormModal({ isOpen, onClose, mode, initialProduct
             <h3 className="text-xl font-bold text-foreground mb-2">Batalkan Perubahan?</h3>
             <p className="text-foreground/60 text-sm mb-8">Anda memiliki data yang belum disimpan. Perubahan ini akan hilang jika Anda keluar.</p>
             <div className="flex gap-3 w-full">
-              <button onClick={() => setDiscardModalOpen(false)} className="flex-1 py-3 rounded-full font-bold bg-slate-100 dark:bg-slate-800 text-foreground hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">Kembali Edit</button>
-              <button onClick={forceCloseModal} className="flex-1 py-3 rounded-full font-bold bg-amber-600 hover:bg-amber-700 text-white transition-colors">Ya, Buang</button>
+              <button type="button" onClick={() => setDiscardModalOpen(false)} className="flex-1 py-3 rounded-full font-bold bg-slate-100 dark:bg-slate-800 text-foreground hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">Kembali Edit</button>
+              <button type="button" onClick={forceCloseModal} className="flex-1 py-3 rounded-full font-bold bg-amber-600 hover:bg-amber-700 text-white transition-colors">Ya, Buang</button>
             </div>
           </div>
         </div>

@@ -12,6 +12,7 @@ import { formatRupiah } from '../utils';
 import { useToastStore } from '../../../store/toastStore';
 import { deleteProduct } from '../../../lib/api';
 import { supabase } from '../../../lib/supabase'; 
+import { useAuthStore } from '../../../store/authStore';
 
 import ProductFormModal from '../components/ProductFormModal';
 import CategoryManagerModal from '../components/CategoryManagerModal';
@@ -19,12 +20,12 @@ import { useProductStore } from '../../../store/productStore';
 
 const EMPTY_ARRAY = [];
 
-// OPTIMASI: Hanya ambil kolom yang benar-benar di-render di tabel (Sangat Menghemat Bandwidth & Cepat)
-const fetchProductsAndCategories = async () => {
+// ✅ DIKEMBALIKAN KE SELECT('*') AGAR DATA SIZES & STOK PER UKURAN TIDAK HILANG
+const fetchProductsAndCategoriesOptimized = async () => {
   const [productsRes, categoriesRes, sizesRes] = await Promise.all([
     supabase
       .from('products')
-      .select('*') // Sudah diperbaiki menjadi '*' sesuai pembahasan sebelumnya
+      .select('*') 
       .order('created_at', { ascending: false }),
     supabase
       .from('categories')
@@ -33,7 +34,7 @@ const fetchProductsAndCategories = async () => {
     supabase
       .from('master_sizes')
       .select('name')
-      .order('sort_order', { ascending: true }) // Urutkan berdasarkan S, M, L, XL
+      .order('sort_order', { ascending: true }) 
   ]);
 
   if (productsRes.error) throw productsRes.error;
@@ -43,22 +44,27 @@ const fetchProductsAndCategories = async () => {
   return {
     products: productsRes.data || [],
     categories: categoriesRes.data.map(c => c.name) || [],
-    masterSizes: sizesRes.data.map(s => s.name) || [] // Data baru
+    masterSizes: sizesRes.data.map(s => s.name) || [] 
   };
 };
 
 export default function AdminProductsPage() {
   const addToast = useToastStore((state) => state.addToast);
   const syncStorefront = useProductStore((state) => state.fetchProducts);
+  const { user, isInitialized } = useAuthStore();
   
+  const userRole = user?.role?.toLowerCase() || "";
+  const hasAdminAccess = isInitialized && user && ["superadmin", "admin_staff", "admin"].includes(userRole);
+  const canEdit = ["superadmin", "admin"].includes(userRole);
+
   const {
     data,
     isLoading: isLoadingProducts,
-    error, // Ambil state error dari SWR
+    error, 
     mutate
   } = useSWR(
-    "admin-products-optimized-list", 
-    fetchProductsAndCategories,
+    hasAdminAccess ? "admin-products-optimized-list" : null, 
+    fetchProductsAndCategoriesOptimized,
     {
       revalidateOnFocus: false,
       revalidateIfStale: false,
@@ -150,7 +156,8 @@ export default function AdminProductsPage() {
     }
   };
 
-  // TAMPILKAN UI ERROR JIKA DATABASE BERMASALAH (Agar tidak hang/loading selamanya)
+  if (!isInitialized) return null;
+
   if (error) {
     return (
       <div className="min-h-64 flex flex-col items-center justify-center text-center p-6 bg-red-50 dark:bg-red-950/20 rounded-3xl border border-red-100 dark:border-red-900/30">
@@ -169,14 +176,17 @@ export default function AdminProductsPage() {
           <h2 className="text-3xl font-bold tracking-tight text-foreground">Katalog Produk</h2>
           <p className="text-slate-500 dark:text-slate-400 mt-1">Atur harga, diskon, kategori, dan stok pakaian Anda.</p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <button onClick={() => setIsCategoryModalOpen(true)} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-foreground px-5 py-2.5 rounded-full font-bold transition-all shadow-sm hover:shadow-md active:scale-95 flex items-center gap-2">
-            <Tags className="w-4 h-4" /> Kelola Kategori
-          </button>
-          <button onClick={() => handleOpenModal('add')} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-full font-bold transition-all shadow-lg shadow-blue-600/20 active:scale-95 flex items-center gap-2">
-            <Plus className="w-4 h-4" /> Tambah Produk
-          </button>
-        </div>
+        
+        {canEdit && (
+          <div className="flex flex-wrap items-center gap-3">
+            <button onClick={() => setIsCategoryModalOpen(true)} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-foreground px-5 py-2.5 rounded-full font-bold transition-all shadow-sm hover:shadow-md active:scale-95 flex items-center gap-2">
+              <Tags className="w-4 h-4" /> Kelola Kategori
+            </button>
+            <button onClick={() => handleOpenModal('add')} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-full font-bold transition-all shadow-lg shadow-blue-600/20 active:scale-95 flex items-center gap-2">
+              <Plus className="w-4 h-4" /> Tambah Produk
+            </button>
+          </div>
+        )}
       </header>
       
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden mb-8">
@@ -288,10 +298,14 @@ export default function AdminProductsPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => handleOpenModal('edit', product)} className="p-2 text-blue-600 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 rounded-lg" title="Edit Produk"><Edit className="w-4 h-4" /></button>
-                          <button onClick={() => setDeleteModal({ isOpen: true, id: product.id, name: product.name })} className="p-2 text-red-600 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 rounded-lg" title="Hapus Produk"><Trash2 className="w-4 h-4" /></button>
-                        </div>
+                        {canEdit ? (
+                          <div className="flex items-center justify-end gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => handleOpenModal('edit', product)} className="p-2 text-blue-600 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 rounded-lg"><Edit className="w-4 h-4" /></button>
+                            <button onClick={() => setDeleteModal({ isOpen: true, id: product.id, name: product.name })} className="p-2 text-red-600 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 rounded-lg"><Trash2 className="w-4 h-4" /></button>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] font-bold text-slate-400 uppercase bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">Read Only</span>
+                        )}
                       </td>
                     </tr>
                   )
@@ -328,7 +342,6 @@ export default function AdminProductsPage() {
         )}
       </div>
 
-      {/* UPDATE: Lempar masterSizes sebagai prop ke ProductFormModal */}
       <ProductFormModal 
         isOpen={isModalOpen} 
         onClose={handleCloseModal} 

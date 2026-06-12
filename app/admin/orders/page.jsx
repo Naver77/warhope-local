@@ -1,32 +1,44 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { Search, Eye, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { useAuthStore } from "../../../store/authStore";
 import { useToastStore } from "../../../store/toastStore";
 import { supabase } from "../../../lib/supabase";
-import { getAllOrders } from "../../../lib/api";
 import { formatRupiah, formatDate, getStatusBadge } from "../utils";
 
-// Impor komponen yang baru dibuat
 import OrderDetailModal from "../../../components/admin/OrderDetailModal";
 import OrderActionModal from "../../../components/admin/OrderActionModal";
 
+// ✅ 1. FETCHER BARU: Menarik semua data tanpa batas untuk Admin
+const fetchAllAdminOrders = async () => {
+  const { data, error } = await supabase
+    .from("orders")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  return data || [];
+};
+
 export default function AdminOrdersPage() {
-  const router = useRouter();
   const { user, isInitialized } = useAuthStore();
   const addToast = useToastStore((state) => state.addToast);
 
-  const isAdmin = isInitialized && user && user.role === "admin";
+  // ✅ 2. DEFINISI HAK AKSES
+  const userRole = user?.role?.toLowerCase() || "";
+  const hasAdminAccess = isInitialized && user && ["superadmin", "admin_staff", "admin"].includes(userRole);
+  
+  // Hanya Superadmin & Admin yang bisa mengubah status pesanan
+  const canEdit = ["superadmin", "admin"].includes(userRole);
 
   const {
     data: rawOrders = [],
     isLoading: isLoadingOrders,
     mutate,
-  } = useSWR(isAdmin ? "admin-orders-list" : null, getAllOrders, {
+  } = useSWR(hasAdminAccess ? "admin-orders-list-all" : null, fetchAllAdminOrders, {
     revalidateOnFocus: false,
     revalidateIfStale: false,
   });
@@ -51,12 +63,6 @@ export default function AdminOrdersPage() {
     newStatus: "",
     requiresResi: false,
   });
-
-  useEffect(() => {
-    if (isInitialized && (!user || user.role !== "admin")) {
-      router.push("/");
-    }
-  }, [isInitialized, user, router]);
 
   const filteredOrders = useMemo(() => {
     return orders.filter(
@@ -88,19 +94,16 @@ export default function AdminOrdersPage() {
       isOpen: true,
       orderId: selectedOrder.id,
       newStatus,
-      // Status 'shipped' butuh input resi
       requiresResi: newStatus === "shipped" || newStatus === "SHIPPED",
     });
   };
 
   const executeUpdateStatus = async (actionData) => {
-    const { orderId, newStatus, requiresResi, trackingNumber, courier } =
-      actionData;
+    const { orderId, newStatus, requiresResi, trackingNumber, courier } = actionData;
 
     setIsUpdatingStatus(true);
     try {
-      // Siapkan payload untuk database
-      const payload = { status: newStatus.toLowerCase() }; // Selalu gunakan lowercase di DB
+      const payload = { status: newStatus.toLowerCase() };
 
       if (requiresResi && trackingNumber) {
         payload.tracking_number = trackingNumber.trim();
@@ -119,7 +122,6 @@ export default function AdminOrdersPage() {
 
       addToast(`Status pesanan diubah menjadi ${newStatus}`, "success");
 
-      // Logika Email Opsional (Biarkan seperti semula)
       if (
         (newStatus === "shipped" || newStatus === "SHIPPED") &&
         payload.tracking_number &&
@@ -141,10 +143,7 @@ export default function AdminOrdersPage() {
         }
       }
 
-      // Refresh SWR
       mutate();
-
-      // Update data di modal yang sedang terbuka agar UI instan berubah
       setSelectedOrder({ ...selectedOrder, ...payload });
 
       setActionModal({
@@ -211,14 +210,23 @@ export default function AdminOrdersPage() {
                     colSpan="5"
                     className="px-6 py-16 text-center text-slate-500"
                   >
-                    Memuat...
+                    Memuat data pesanan...
+                  </td>
+                </tr>
+              ) : currentOrders.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan="5"
+                    className="px-6 py-16 text-center text-slate-500 italic"
+                  >
+                    Tidak ada pesanan yang ditemukan.
                   </td>
                 </tr>
               ) : (
                 currentOrders.map((order) => (
                   <tr
                     key={order.id}
-                    className="hover:bg-slate-50 transition-colors"
+                    className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
                   >
                     <td className="px-6 py-4">
                       <p className="font-bold font-mono">
@@ -234,7 +242,7 @@ export default function AdminOrdersPage() {
                         {order.shipping_address}
                       </p>
                     </td>
-                    <td className="px-6 py-4 font-bold text-blue-600">
+                    <td className="px-6 py-4 font-bold text-blue-600 dark:text-blue-400">
                       {formatRupiah(order.total_amount)}
                     </td>
                     <td className="px-6 py-4">
@@ -246,15 +254,21 @@ export default function AdminOrdersPage() {
                       )}
                     </td>
                     <td className="px-6 py-4 text-center">
-                      <button
-                        onClick={() => {
-                          setSelectedOrder(order);
-                          setIsOrderModalOpen(true);
-                        }}
-                        className="p-2 text-blue-600 bg-blue-50 rounded-lg"
-                      >
-                        <Eye className="w-5 h-5" />
-                      </button>
+                      {/* ✅ 3. PEMBATASAN AKSI BERDASARKAN ROLE */}
+                      {canEdit ? (
+                        <button
+                          onClick={() => {
+                            setSelectedOrder(order);
+                            setIsOrderModalOpen(true);
+                          }}
+                          className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                          title="Kelola Pesanan"
+                        >
+                          <Eye className="w-5 h-5" />
+                        </button>
+                      ) : (
+                        <span className="text-xs font-semibold text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">View Only</span>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -262,7 +276,7 @@ export default function AdminOrdersPage() {
             </tbody>
           </table>
         </div>
-        {/* FOOTER PAGINASI */}
+        
         {!isLoadingOrders && filteredOrders.length > 0 && (
           <div className="p-4 sm:p-6 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row justify-between items-center gap-4 bg-slate-50 dark:bg-slate-800/20">
             <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
