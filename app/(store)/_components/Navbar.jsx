@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ShoppingBag, User, Menu, X, Heart } from 'lucide-react';
+import { ShoppingBag, User, Menu, X, Heart, Loader2 } from 'lucide-react';
 
 import { useCartStore } from '../../../store/cartStore';
 import { useWishlistStore } from '../../../store/wishlistStore';
@@ -17,14 +17,20 @@ export default function Navbar() {
   const wishlistItems = useWishlistStore((state) => state.wishlist); 
   const syncWishlistFromDB = useWishlistStore((state) => state.syncWishlistFromDB);
 
-  const { user, isInitialized } = useAuthStore();
+  // ✅ OPTIMASI 1: Ambil fungsi checkAuth dari store
+  const { user, isInitialized, checkAuth } = useAuthStore();
 
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // ✅ DETEKSI TINGKAT ADMIN
+  // DETEKSI TINGKAT ADMIN
   const userRole = user?.role?.toLowerCase();
   const isAdminLevel = userRole === 'superadmin' || userRole === 'admin_staff' || userRole === 'admin';
+
+  // ✅ OPTIMASI 2: Navbar harus proaktif mengecek sesi saat pertama kali dimuat
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
 
   // Deteksi Scroll
   useEffect(() => {
@@ -38,10 +44,11 @@ export default function Navbar() {
     const fetchProductsAndSync = async () => {
       const data = await getAllProducts();
       if (user?.email && data?.length > 0) {
-        syncWishlistFromDB(user.email, data);
+        syncWishlistFromDB(user.id, data);
       }
     };
 
+    // Pastikan sesi sudah diinisialisasi sebelum sinkronisasi data berat
     if (isInitialized && user) {
       fetchProductsAndSync();
     }
@@ -117,11 +124,14 @@ export default function Navbar() {
               </Link>
             )}
 
-            {/* SINKRONISASI AKTIF: PROFILE / ACCOUNT */}
-            {isInitialized && (
+            {/* ✅ OPTIMASI 3: Tampilkan indikator loading kecil jika sesi sedang dicek, hindari UI kosong (blank) */}
+            {!isInitialized ? (
+              <div className="hidden sm:flex items-center justify-center p-2 w-10 h-10">
+                <Loader2 className="w-4 h-4 text-foreground/40 animate-spin" />
+              </div>
+            ) : (
               user ? (
                 <Link 
-                  // ✅ UPDATE: Gunakan isAdminLevel untuk mengarahkan ke halaman yang benar
                   href={isAdminLevel ? '/admin' : '/profile'} 
                   className={`p-2 transition-colors rounded-full hidden sm:block ${pathname === '/profile' ? 'text-blue-600 bg-blue-50 dark:bg-blue-950/30' : 'text-foreground/70 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
                 >
@@ -166,10 +176,14 @@ export default function Navbar() {
           {user && <Link href="/wishlist" onClick={() => setIsMobileMenuOpen(false)} className={`flex items-center justify-between ${pathname === '/wishlist' ? 'text-red-500' : ''}`}>Wishlist Saya {wishlistItems.length > 0 && <span className="bg-red-500 text-white text-xs px-3 py-1 rounded-full">{wishlistItems.length}</span>}</Link>}
           <Link href="/cart" onClick={() => setIsMobileMenuOpen(false)} className={`flex items-center justify-between ${pathname === '/cart' ? 'text-blue-600' : ''}`}>Keranjang Belanja {items.length > 0 && <span className="bg-blue-600 text-white text-xs px-3 py-1 rounded-full">{items.length}</span>}</Link>
         </div>
+        
         <div className="mt-auto pb-8 pt-8 border-t border-slate-100 dark:border-slate-800">
-          {isInitialized && user ? (
+          {!isInitialized ? (
+            <div className="flex items-center justify-center gap-2 py-4 w-full">
+              <Loader2 className="w-5 h-5 animate-spin text-foreground/40" />
+            </div>
+          ) : user ? (
             <Link 
-              // ✅ UPDATE: Gunakan isAdminLevel untuk mengarahkan ke halaman yang benar di versi mobile
               href={isAdminLevel ? '/admin' : '/profile'} 
               onClick={() => setIsMobileMenuOpen(false)} 
               className={`flex items-center justify-center gap-2 py-4 rounded-2xl font-bold w-full ${pathname === '/profile' ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/30' : 'bg-slate-100 dark:bg-slate-800 text-foreground'}`}

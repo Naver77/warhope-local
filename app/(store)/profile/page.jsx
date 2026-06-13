@@ -128,7 +128,6 @@ export default function ProfilePage() {
       updateUserProfile({ name: profileForm.name, phone_number: profileForm.phone_number, address: profileForm.address });
       addToast("Profil berhasil diperbarui!", "success");
     } catch (error) {
-      // ✅ TAMBAHKAN BARIS INI UNTUK MENGHILANGKAN WARNING ESLINT
       console.error("Error update profil:", error); 
       addToast("Gagal memperbarui profil.", "error");
     } finally {
@@ -163,19 +162,26 @@ export default function ProfilePage() {
     if (confirmModal.type === "logout") {
       setIsProcessingAction(true);
       try {
+        // ✅ 1. Hapus sesi dari Supabase
         await supabase.auth.signOut();
-        await logout();
+        
+        // ✅ 2. Bersihkan state global tanpa merusak aplikasi
+        logout();
         clearCart();
         clearWishlist();
-        if (typeof window !== "undefined") {
-          window.localStorage.clear();
-          window.sessionStorage.clear();
-        }
-        window.location.href = "/";
-      } catch {
-        window.location.href = "/";
+        
+        // ✅ 3. Beri notifikasi dan redirect dengan mulus
+        addToast("Anda berhasil keluar.", "success");
+        setConfirmModal({ ...confirmModal, isOpen: false });
+        router.replace("/auth/login"); 
+      } catch (error) {
+        console.error("Error saat logout:", error);
+        router.replace("/auth/login"); // Tetap paksa redirect jika ada error sesi
+      } finally {
+        setIsProcessingAction(false);
       }
-    } else if (confirmModal.type === "cancel_order") {
+    } 
+    else if (confirmModal.type === "cancel_order") {
       setIsProcessingAction(true);
       try {
         const orderId = confirmModal.payload;
@@ -194,7 +200,8 @@ export default function ProfilePage() {
       } finally {
         setIsProcessingAction(false);
       }
-    } else if (confirmModal.type === "complete_order") {
+    } 
+    else if (confirmModal.type === "complete_order") {
       setIsProcessingAction(true);
       try {
         const orderId = confirmModal.payload;

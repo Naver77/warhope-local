@@ -173,9 +173,9 @@ export default function CartPage() {
   const totalDiscount = originalTotal - finalTotal;
 
   return (
-    <main className="min-h-screen bg-background pt-8 pb-24 px-4 sm:px-6 max-w-7xl mx-auto">
+    <main className="min-h-screen bg-background pt-20 pb-24 px-4 sm:px-6 max-w-7xl mx-auto">
       <div className="flex items-center gap-3 mb-8 md:mb-12">
-        <h1 className="text-3xl md:text-4xl font-black tracking-tight text-foreground">Keranjang Belanja</h1>
+        <h1 className="text-3xl md:text-4xl font-black tracking-tight text-foreground">Cart</h1>
         <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-black text-sm px-3 py-1 rounded-full">
           {items.length} Barang
         </span>
