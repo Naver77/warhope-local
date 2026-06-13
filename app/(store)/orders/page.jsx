@@ -7,7 +7,7 @@ import { Package, Truck, CheckCircle, Clock, Copy, ExternalLink, Star, ShieldChe
 import { useAuthStore } from '../../../store/authStore';
 import { useToastStore } from '../../../store/toastStore';
 import { getUserOrders, markOrderAsCompleted, submitReview } from '../../../lib/api';
-import { formatRupiah, formatDate } from '../../admin/utils';
+import { formatRupiah, formatDate } from '../../admin/_utils/utils';
 
 export default function UserOrdersPage() {
   const router = useRouter();
