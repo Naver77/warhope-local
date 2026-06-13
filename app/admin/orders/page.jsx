@@ -7,10 +7,10 @@ import { Search, Eye, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAuthStore } from "../../../store/authStore";
 import { useToastStore } from "../../../store/toastStore";
 import { supabase } from "../../../lib/supabase";
-import { formatRupiah, formatDate, getStatusBadge } from "../utils";
+import { formatRupiah, formatDate, getStatusBadge } from "../_utils/utils";
 
-import OrderDetailModal from "../../../components/admin/OrderDetailModal";
-import OrderActionModal from "../../../components/admin/OrderActionModal";
+import OrderDetailModal from "../_components/OrderDetailModal";
+import OrderActionModal from "../_components/OrderActionModal";
 
 // ✅ 1. FETCHER BARU: Menarik semua data tanpa batas untuk Admin
 const fetchAllAdminOrders = async () => {

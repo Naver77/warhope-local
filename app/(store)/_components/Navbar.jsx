@@ -5,10 +5,10 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ShoppingBag, User, Menu, X, Heart } from 'lucide-react';
 
-import { useCartStore } from '../store/cartStore';
-import { useWishlistStore } from '../store/wishlistStore';
-import { useAuthStore } from '../store/authStore';
-import { getAllProducts } from '../lib/api';
+import { useCartStore } from '../../../store/cartStore';
+import { useWishlistStore } from '../../../store/wishlistStore';
+import { useAuthStore } from '../../../store/authStore';
+import { getAllProducts } from '../../../lib/api';
 
 export default function Navbar() {
   const pathname = usePathname();

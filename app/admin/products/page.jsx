@@ -8,14 +8,14 @@ import {
   ChevronLeft, ChevronRight, Tags, Filter, ChevronDown, Tag, Loader2, XCircle
 } from 'lucide-react';
 
-import { formatRupiah } from '../utils';
+import { formatRupiah } from '../_utils/utils';
 import { useToastStore } from '../../../store/toastStore';
 import { deleteProduct } from '../../../lib/api';
 import { supabase } from '../../../lib/supabase'; 
 import { useAuthStore } from '../../../store/authStore';
 
-import ProductFormModal from '../components/ProductFormModal';
-import CategoryManagerModal from '../components/CategoryManagerModal';
+import ProductFormModal from '../_components/ProductFormModal';
+import CategoryManagerModal from '../_components/CategoryManagerModal';
 import { useProductStore } from '../../../store/productStore';
 
 const EMPTY_ARRAY = [];

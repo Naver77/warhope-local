@@ -29,6 +29,6 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
     "**/*.mts"
-, "lib/data.js", "app/(store)/product/[slug]/ProductDetailClient.jsx"  ],
+, "lib/data.js", "app/(store)/product/[slug]/_components/ProductDetailClient.jsx"  ],
   "exclude": ["node_modules"]
 }

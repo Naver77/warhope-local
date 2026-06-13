@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Filter, PackageX, ChevronDown, ArrowUpDown } from 'lucide-react';
-import ProductCard from '../../../components/ProductCard'; 
+import ProductCard from '../_components/ProductCard'; 
 import { useProductStore } from '../../../store/productStore';
 
 export default function KatalogPage() {

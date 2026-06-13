@@ -2,10 +2,10 @@ import type { Metadata } from "next";
 import { Plus_Jakarta_Sans } from 'next/font/google';
 import { Analytics } from "@vercel/analytics/next"; // 1. IMPORT VERCEL ANALYTICS
 import "./globals.css";
-import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
-import ToastProvider from "../components/ToastProvider";
-import AuthListener from "../components/AuthListener"; 
+import Navbar from "./(store)/_components/Navbar";
+import Footer from "./(store)/_components/Footer";
+import ToastProvider from "../components/providers/ToastProvider";
+import AuthListener from "../components/providers/AuthListener"; 
 
 // 2. Konfigurasi Font
 const modernFont = Plus_Jakarta_Sans({ 

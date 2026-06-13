@@ -1,5 +1,5 @@
 import { getProductById, getProductReviews } from "../../../../lib/api";
-import ProductDetailClient from "./ProductDetailClient";
+import ProductDetailClient from "./_components/ProductDetailClient";
 
 export default async function ProductDetailServer({ params }) {
   const resolvedParams = await params;

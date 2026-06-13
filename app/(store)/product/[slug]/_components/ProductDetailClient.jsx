@@ -9,9 +9,9 @@ import {
   Star, MessageSquare, MessageCircle, PaintBucket,
 } from "lucide-react";
 
-import { useCartStore } from "../../../../store/cartStore";
-import { useAuthStore } from "../../../../store/authStore";
-import { useToastStore } from "../../../../store/toastStore";
+import { useCartStore } from "../../../../../store/cartStore";
+import { useAuthStore } from "../../../../../store/authStore";
+import { useToastStore } from "../../../../../store/toastStore";
 
 export default function ProductDetailClient({ initialProduct, initialReviews }) {
   const router = useRouter();

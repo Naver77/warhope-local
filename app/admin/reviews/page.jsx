@@ -6,7 +6,7 @@ import { Star, MessageSquare, Trash2, Search, XCircle } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { useToastStore } from '../../../store/toastStore';
 import { useAuthStore } from '../../../store/authStore';
-import { formatDate } from '../utils';
+import { formatDate } from '../_utils/utils';
 
 // OPTIMASI: Batasi kolom yang diambil untuk mempercepat performa kueri
 const fetchAllReviews = async () => {

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle } from "lucide-react";
 
 import { useAuthStore } from "../../store/authStore";
-import Sidebar from "./components/Sidebar";
+import Sidebar from "./_components/Sidebar";
 import { usePreventNavigation } from "../../hooks/usePreventNavigation";
 
 export default function AdminLayout({ children }) {

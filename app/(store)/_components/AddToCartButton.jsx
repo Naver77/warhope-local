@@ -3,10 +3,10 @@
 import React, { useMemo } from 'react';
 import { ShoppingCart, Heart } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useCartStore } from '../store/cartStore';
-import { useToastStore } from '../store/toastStore';
-import { useAuthStore } from '../store/authStore';
-import { useWishlistStore } from '../store/wishlistStore';
+import { useCartStore } from '../../../store/cartStore';
+import { useToastStore } from '../../../store/toastStore';
+import { useAuthStore } from '../../../store/authStore';
+import { useWishlistStore } from '../../../store/wishlistStore';
 
 export default function AddToCartButton({ product }) {
   const router = useRouter();

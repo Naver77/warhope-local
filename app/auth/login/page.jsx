@@ -3,12 +3,12 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from 'next/link';
-import { Mail, KeyRound, ArrowRight, ShieldCheck, ArrowLeft } from 'lucide-react';
+// ✅ Tambahkan Eye dan EyeOff
+import { Mail, KeyRound, ArrowRight, ShieldCheck, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '../../../store/authStore';
 import { useToastStore } from '../../../store/toastStore';
 import { supabase } from '../../../lib/supabase'; 
 
-// ✅ 1. Ekstrak isi logika ke komponen terpisah (LoginContent)
 function LoginContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -20,6 +20,8 @@ function LoginContent() {
 
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [isProcessing, setIsProcessing] = useState(false);
+  // ✅ STATE UNTUK VISIBILITAS PASSWORD
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     checkAuth();
@@ -141,11 +143,21 @@ function LoginContent() {
                 <div className="relative">
                   <KeyRound className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-foreground/40" />
                   <input 
-                    type="password" name="password" required minLength="6"
+                    type={showPassword ? "text" : "password"} // ✅ DYNAMIC TYPE
+                    name="password" required minLength="6"
                     value={formData.password} onChange={handleInputChange}
                     placeholder="••••••••" 
-                    className="w-full pl-12 pr-4 py-3.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all text-foreground"
+                    // ✅ pr-12 ditambahkan agar teks tidak menabrak ikon mata
+                    className="w-full pl-12 pr-12 py-3.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-600 outline-none transition-all text-foreground"
                   />
+                  {/* ✅ TOMBOL TOGGLE PASSWORD */}
+                  <button 
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-foreground/40 hover:text-foreground/80 focus:outline-none transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
                 </div>
               </div>
             </div>
@@ -177,7 +189,6 @@ function LoginContent() {
   );
 }
 
-// ✅ 2. Bungkus komponen dengan Suspense agar Vercel tidak error saat build
 export default function LoginPage() {
   return (
     <Suspense fallback={

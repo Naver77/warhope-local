@@ -1,7 +1,7 @@
 "use client";
 
 import React from 'react';
-import { useToastStore } from '../store/toastStore';
+import { useToastStore } from '../../store/toastStore';
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 
 export default function ToastProvider() {

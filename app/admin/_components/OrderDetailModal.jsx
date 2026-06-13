@@ -1,7 +1,7 @@
 import React from "react";
 import Image from "next/image";
 import { X, CheckCircle, Mail, Phone, MapPin, Truck, Clock, Package, ShieldCheck } from "lucide-react";
-import { formatRupiah, formatDate, getStatusBadge } from "../../app/admin/utils";
+import { formatRupiah, formatDate, getStatusBadge } from "../_utils/utils";
 
 export default function OrderDetailModal({ 
   selectedOrder, 
@@ -58,7 +58,7 @@ export default function OrderDetailModal({
                       <CheckCircle className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                     </div>
                     <div>
-                      <p className="text-xs text-slate-500">Nama Lengkap</p>
+                      <p className="text-xs text-slate-500">Nama</p>
                       <p className="font-bold text-foreground">{selectedOrder.customer_name}</p>
                     </div>
                   </div>
