@@ -27,14 +27,15 @@ export default function LoginPage() {
 
   // ✅ 2. Perbaiki logika saat user yang sudah login mencoba masuk ke halaman ini
   useEffect(() => {
-    if (isInitialized && user) {
+    // 🔥 TAMBAHAN: Syarat !isProcessing agar tidak tabrakan dengan fungsi login di bawah
+    if (isInitialized && user && !isProcessing) {
       const isAdmin = ['superadmin', 'admin_staff', 'admin'].includes(user.role?.toLowerCase());
       const defaultPath = isAdmin ? '/admin' : '/';
       
       // Jika ada redirectUrl (misal dari halaman produk), prioritaskan itu. Jika tidak, gunakan defaultPath.
       router.replace(redirectUrl !== "/" ? redirectUrl : defaultPath);
     }
-  }, [user, isInitialized, router, redirectUrl]);
+  }, [user, isInitialized, router, redirectUrl, isProcessing]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -88,13 +89,15 @@ export default function LoginPage() {
       const targetPath = redirectUrl !== "/" ? redirectUrl : (isAdminLevel ? '/admin' : '/');
 
       if (!isAdminLevel) {
-        // Sinkronisasi keranjang HANYA untuk pelanggan
         const { syncCartFromDB } = useCartStore.getState();
-        await syncCartFromDB(authData.user.id);
+        // 🚀 OPTIMASI UX: Hapus 'await' (Fire-and-Forget). 
+        // Biarkan sinkronisasi DB berjalan di background tanpa memblokir UI.
+        syncCartFromDB(authData.user.id); 
       }
       
-      // Arahkan ke URL tujuan yang sudah dikalkulasi
+      // Arahkan instan dan paksa Next.js merefresh state komponen
       router.replace(targetPath);
+      router.refresh();
 
     } catch (error) {
       console.error("Login Error:", error);

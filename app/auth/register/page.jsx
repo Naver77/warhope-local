@@ -21,10 +21,11 @@ export default function RegisterPage() {
   }, [checkAuth]);
 
   useEffect(() => {
-    if (isInitialized && user) {
+    // Jangan lakukan auto-redirect ke beranda jika sedang dalam proses pendaftaran
+    if (isInitialized && user && !isProcessing) {
       router.replace(user.role === 'admin' ? '/admin' : '/');
     }
-  }, [user, isInitialized, router]);
+  }, [user, isInitialized, router, isProcessing]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -66,18 +67,21 @@ export default function RegisterPage() {
 
       if (authError) throw authError;
 
-      // 2. Auto-login
+      // 2. Auto-login (Jalur Cepat: Kirim data lengkap agar tidak hit database lagi)
       if (authData.user) {
-        await login({ 
+        login({ 
           id: authData.user.id,
-          email: cleanEmail, 
+          email: cleanEmail,
+          name: cleanName,     // 🔥 Ini mengaktifkan fitur instan di authStore
+          role: 'customer'     // 🔥 Ini juga
         });
       }
       
       addToast('Pendaftaran berhasil! Silakan lengkapi alamat pengiriman Anda.', 'success');
       
-      // 3. Arahkan ke Profil untuk melengkapi data
-      router.push('/profile'); 
+      // 3. Arahkan secara paksa dan instan
+      router.replace('/profile');
+      router.refresh();
 
     } catch (error) {
       console.error("Register Error:", error);

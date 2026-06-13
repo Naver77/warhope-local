@@ -15,7 +15,16 @@ export const useAuthStore = create(
       lastActive: null,
       isInitialized: false,
 
+      // UBAH FUNGSI INI DI store/authStore.js
       login: async (authUser) => {
+        // Optimasi: Jika data yang dikirim sudah lengkap (berisi role/name dari halaman login), 
+        // langsung simpan ke state TANPA nembak database lagi.
+        if (authUser.role || authUser.name) {
+          set({ user: authUser, lastActive: Date.now(), isInitialized: true });
+          return;
+        }
+
+        // Fallback: Jika hanya data user mentah dari Supabase Auth
         const userProfile = await getUserProfile(authUser.id);
         const fullUserData = userProfile ? { ...authUser, ...userProfile } : authUser;
         set({ user: fullUserData, lastActive: Date.now(), isInitialized: true });

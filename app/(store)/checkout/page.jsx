@@ -161,6 +161,8 @@ export default function CheckoutPage() {
 
       const data = await response.json();
 
+      console.log("RESPONS DOKU:", data);
+
       if (response.ok && data.payment_url) {
         addToast(`Mencatat pesanan & memotong stok sementara...`, 'info');
         
@@ -183,7 +185,8 @@ export default function CheckoutPage() {
           status: 'pending', // Konsisten menggunakan huruf kecil untuk trigger Supabase
           user_id: user.id,
           // Menyisipkan preferensi tipe kurir (Reguler/Ekspres) agar admin tahu
-          courier: shippingType === 'ekspres' ? 'Ekspres (Kilat)' : 'Reguler' 
+          courier: shippingType === 'ekspres' ? 'Ekspres (Kilat)' : 'Reguler',
+          payment_url: data.payment_url
         };
 
         await createOrder(orderPayload, itemsWithFinalPrice);
