@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Plus_Jakarta_Sans } from 'next/font/google';
 import { Analytics } from "@vercel/analytics/next"; // 1. IMPORT VERCEL ANALYTICS
+import { SpeedInsights } from "@vercel/speed-insights/next"; // 2. IMPORT VERCEL SPEED INSIGHTS
 import "./globals.css";
 import Navbar from "./(store)/_components/Navbar";
 import Footer from "./(store)/_components/Footer";
@@ -92,6 +93,9 @@ export default function RootLayout({
         
         {/* 2. KOMPONEN ANALYTICS DARI VERCEL */}
         <Analytics />
+        
+        {/* 3. KOMPONEN SPEED INSIGHTS DARI VERCEL */}
+        <SpeedInsights />
       </body>
     </html>
   );
