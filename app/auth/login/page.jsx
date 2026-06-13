@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from 'next/link';
 import { Mail, KeyRound, ArrowRight, ShieldCheck, ArrowLeft } from 'lucide-react';
@@ -8,11 +8,11 @@ import { useAuthStore } from '../../../store/authStore';
 import { useToastStore } from '../../../store/toastStore';
 import { supabase } from '../../../lib/supabase'; 
 
-export default function LoginPage() {
+// ✅ 1. Ekstrak isi logika ke komponen terpisah (LoginContent)
+function LoginContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   
-  // ✅ 1. Tangkap URL tujuan jika ada, jika tidak default ke "/"
   const redirectUrl = searchParams.get("redirect") || "/";
   
   const { login, user, checkAuth, isInitialized } = useAuthStore();
@@ -25,13 +25,11 @@ export default function LoginPage() {
     checkAuth();
   }, [checkAuth]);
 
-  // ✅ 2. Perbaiki logika saat user yang sudah login mencoba masuk ke halaman ini
   useEffect(() => {
     if (isInitialized && user) {
       const isAdmin = ['superadmin', 'admin_staff', 'admin'].includes(user.role?.toLowerCase());
       const defaultPath = isAdmin ? '/admin' : '/';
       
-      // Jika ada redirectUrl (misal dari halaman produk), prioritaskan itu. Jika tidak, gunakan defaultPath.
       router.replace(redirectUrl !== "/" ? redirectUrl : defaultPath);
     }
   }, [user, isInitialized, router, redirectUrl]);
@@ -55,7 +53,6 @@ export default function LoginPage() {
     setIsProcessing(true);
 
     try {
-      // 1. Autentikasi ke Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: cleanEmail,
         password: cleanPassword,
@@ -63,7 +60,6 @@ export default function LoginPage() {
 
       if (authError) throw authError;
 
-      // 2. Tarik data profil
       const { data: profileData, error: profileError } = await supabase
         .from('users')
         .select('*')
@@ -74,26 +70,22 @@ export default function LoginPage() {
         throw new Error("Profil pengguna tidak ditemukan di database.");
       }
 
-      // 3. Masukkan data profil ke Zustand
       await login(profileData);
 
-      // 4. Deteksi Role
       const userRole = profileData.role?.toLowerCase() || 'customer';
       const userName = profileData.name || cleanEmail.split('@')[0];
       const isAdminLevel = ['superadmin', 'admin_staff', 'admin'].includes(userRole);
 
       addToast(isAdminLevel ? `Autentikasi ${userRole.replace('_', ' ')} berhasil.` : `Selamat datang kembali, ${userName}!`, 'success');
       
-      // ✅ 5. Tentukan Rute Tujuan yang Benar
       const targetPath = redirectUrl !== "/" ? redirectUrl : (isAdminLevel ? '/admin' : '/');
 
       if (!isAdminLevel) {
-        // Sinkronisasi keranjang HANYA untuk pelanggan
+        const { useCartStore } = await import('../../../store/cartStore');
         const { syncCartFromDB } = useCartStore.getState();
         await syncCartFromDB(authData.user.id);
       }
       
-      // Arahkan ke URL tujuan yang sudah dikalkulasi
       router.replace(targetPath);
 
     } catch (error) {
@@ -114,7 +106,6 @@ export default function LoginPage() {
 
   return (
     <main className="min-h-screen bg-background flex flex-col items-center justify-center px-4 pt-28 pb-12 relative">
-      
       <div className="w-full max-w-md lg:max-w-4xl mb-4 z-10">
         <Link href="/" className="inline-flex items-center gap-2 text-sm font-bold text-foreground/50 hover:text-foreground transition-colors">
           <ArrowLeft className="w-4 h-4" /> Kembali ke Toko
@@ -122,7 +113,6 @@ export default function LoginPage() {
       </div>
 
       <div className="w-full max-w-md lg:max-w-4xl bg-white dark:bg-slate-800/50 rounded-3xl shadow-xl overflow-hidden border border-slate-200 dark:border-slate-800 p-8 lg:p-12 animate-in zoom-in-95 duration-500 relative">
-        
         <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl -translate-y-10 translate-x-10 pointer-events-none"></div>
 
         <div className="text-center lg:text-left mb-8 relative z-10">
@@ -132,7 +122,6 @@ export default function LoginPage() {
         
         <form onSubmit={handleLogin} className="relative z-10">
           <div className="flex flex-col lg:flex-row lg:gap-12">
-            
             <div className="flex-1 space-y-5">
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-foreground/60 uppercase tracking-widest px-1">Alamat Email</label>
@@ -169,7 +158,6 @@ export default function LoginPage() {
               <div className="mt-8 text-center relative z-10">
                 <p className="text-sm text-foreground/60">
                   Belum punya akun?{' '}
-                  {/* ✅ 6. Tambahkan parameter redirect ke link register juga jika user memutuskan untuk mendaftar */}
                   <Link href={`/auth/register?redirect=${encodeURIComponent(redirectUrl)}`} className="text-blue-600 font-bold hover:underline">
                     Daftar di sini
                   </Link>
@@ -182,10 +170,22 @@ export default function LoginPage() {
                 </p>
               </div>
             </div>
-
           </div>
         </form>
       </div>
     </main>
+  );
+}
+
+// ✅ 2. Bungkus komponen dengan Suspense agar Vercel tidak error saat build
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    }>
+      <LoginContent />
+    </Suspense>
   );
 }
