@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation"; // TAMBAHAN: usePathname untuk mendapatkan URL saat ini
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -15,6 +15,7 @@ import { useToastStore } from "../../../../store/toastStore";
 
 export default function ProductDetailClient({ initialProduct, initialReviews }) {
   const router = useRouter();
+  const pathname = usePathname(); // Untuk mendapatkan path "/product/slug-produk"
 
   const [product] = useState(initialProduct);
   const [reviews] = useState(initialReviews || []);
@@ -36,7 +37,6 @@ export default function ProductDetailClient({ initialProduct, initialReviews }) 
 
   const [availableSizes] = useState(sizeObj);
   
-  // FIX: Hapus `: any`
   const firstAvailable = Object.entries(sizeObj).find(([, data]) => data.active && data.stock > 0);
   const [selectedSize, setSelectedSize] = useState(firstAvailable ? firstAvailable[0] : "");
 
@@ -65,10 +65,12 @@ export default function ProductDetailClient({ initialProduct, initialReviews }) 
   const formatDate = (dateString) =>
     new Date(dateString).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
 
+  // === PERBAIKAN LOGIC AUTHENTICATION ===
   const handleAddToCart = () => {
     if (!user) {
       addToast("Silakan login terlebih dahulu untuk mulai belanja.", "error");
-      router.push("/login"); 
+      // Redirect ke /auth/login dan bawa URL produk saat ini sebagai parameter
+      router.push(`/auth/login?redirect=${encodeURIComponent(pathname)}`); 
       return;
     }
     if (isGlobalOutOfStock || currentMaxStock === 0) return addToast("Maaf, produk ini sedang habis.", "error");
@@ -81,7 +83,8 @@ export default function ProductDetailClient({ initialProduct, initialReviews }) 
   const handleBuyNow = () => {
     if (!user) {
       addToast("Silakan login terlebih dahulu untuk membeli.", "error");
-      router.push("/login");
+      // Redirect ke /auth/login dan bawa URL produk saat ini sebagai parameter
+      router.push(`/auth/login?redirect=${encodeURIComponent(pathname)}`);
       return;
     }
     if (isGlobalOutOfStock || currentMaxStock === 0) return addToast("Maaf, produk ini sedang habis.", "error");
@@ -90,6 +93,7 @@ export default function ProductDetailClient({ initialProduct, initialReviews }) 
     addItem({ ...product, finalPrice: displayPrice, selectedColor, selectedSize, quantity });
     router.push("/checkout");
   };
+  // ======================================
 
   const averageRating = reviews.length > 0
       ? (reviews.reduce((acc, curr) => acc + curr.rating, 0) / reviews.length).toFixed(1)

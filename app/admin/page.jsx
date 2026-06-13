@@ -3,15 +3,8 @@
 import React, { useMemo } from "react";
 import useSWR from "swr";
 import {
-  BarChart3,
-  Award,
-  RefreshCw,
-  DollarSign,
-  ShoppingBag,
-  Clock,
-  AlertTriangle,
-  CheckCircle,
-  Lock
+  BarChart3, Award, RefreshCw, DollarSign, 
+  ShoppingBag, Clock, AlertTriangle, CheckCircle, Lock
 } from "lucide-react";
 import Image from "next/image";
 
@@ -20,17 +13,20 @@ import { supabase } from "../../lib/supabase";
 import { useToastStore } from "../../store/toastStore";
 import { useAuthStore } from "../../store/authStore";
 
-// TINGGI SKELETON GRAFIK (Statis agar React murni/pure)
 const SKELETON_HEIGHTS = [30, 60, 40, 70, 50, 80, 20, 90, 40, 60, 50, 70];
-
-// ARRAY KOSONG GLOBAL (Untuk mencegah re-render useMemo yang bocor)
 const EMPTY_ARRAY = [];
 
-// 1. BUAT FETCHER GLOBAL (Untuk SWR)
+// ✅ 1. FETCHER SUPER RINGAN: Hanya menarik kolom yang dibutuhkan untuk Dashboard
 const fetchDashboardData = async () => {
   const [ordersRes, productsRes] = await Promise.all([
-    supabase.from('orders').select('*').order('created_at', { ascending: false }),
-    supabase.from('products').select('*')
+    supabase
+      .from('orders')
+      .select('id, invoice_number, customer_name, status, total_amount, created_at, items')
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('products')
+      // MENGHILANGKAN kolom 'description' dan 'sizes' yang membuat lambat!
+      .select('id, name, stock, image, category, price, discount, final_price') 
   ]);
 
   if (ordersRes.error) throw ordersRes.error;
@@ -54,27 +50,24 @@ const MetricSkeleton = () => (
 
 export default function AdminDashboardPage() {
   const addToast = useToastStore((state) => state.addToast);
-  
-  // ✅ DETEKSI TINGKAT HAK AKSES ADMIN
   const { user } = useAuthStore();
   const userRole = user?.role?.toLowerCase() || 'customer';
-  // Superadmin memiliki akses penuh ke data keuangan
   const isSuperAdmin = userRole === 'superadmin' || userRole === 'admin';
 
-  // -----------------------------------------------------------------
-  // 2. IMPLEMENTASI SWR PROFESIONAL
-  // -----------------------------------------------------------------
+  // ✅ 2. SWR TINGKAT LANJUT: Cegah re-fetch berulang dengan memori cache (deduping)
   const { 
     data, 
     isLoading,    
     isValidating, 
     mutate        
   } = useSWR(
-    "admin-dashboard-stats", 
+    "admin-dashboard-stats-light", 
     fetchDashboardData,      
     {
       revalidateOnFocus: false, 
       revalidateIfStale: false, 
+      keepPreviousData: true, // UX: Jangan hilangkan data lama saat me-refresh latar belakang
+      dedupingInterval: 60000, // UX: Cache dipertahankan 60 detik saat pindah menu
       onError: (error) => {
         console.error("Gagal memuat data dasbor:", error);
         addToast("Gagal memuat data ringkasan.", "error");
@@ -90,11 +83,8 @@ export default function AdminDashboardPage() {
     "Jul", "Agu", "Sep", "Okt", "Nov", "Des",
   ];
 
-  // -----------------------------------------------------------------
-  // 3. KALKULASI METRIK
-  // -----------------------------------------------------------------
   const dashboardStats = useMemo(() => {
-    if (isLoading || !data) return null; 
+    if (isLoading && !data) return null; 
 
     const successfulStatuses = ["PAID", "SUCCESS", "PROCESSING", "SHIPPED", "COMPLETED"];
     const paidOrders = orders.filter((o) => successfulStatuses.includes(o.status?.toUpperCase()));
@@ -143,8 +133,6 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="animate-in fade-in duration-500 pb-16">
-      
-      {/* HEADER LANGSUNG TAMPIL */}
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <div>
           <h2 className="text-3xl font-bold tracking-tight text-foreground">Ringkasan Bisnis</h2>
@@ -160,13 +148,11 @@ export default function AdminDashboardPage() {
         </button>
       </header>
 
-      {/* METRIK UTAMA */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8">
-        {isLoading || !dashboardStats ? (
+        {(isLoading && !data) || !dashboardStats ? (
           <><MetricSkeleton /><MetricSkeleton /><MetricSkeleton /><MetricSkeleton /></>
         ) : (
           <>
-            {/* ✅ KOTAK PENDAPATAN HANYA TAMPIL UNTUK SUPERADMIN */}
             {isSuperAdmin && (
               <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-4 group">
                 <div className="w-14 h-14 rounded-2xl bg-green-50 dark:bg-green-900/20 text-green-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
@@ -214,10 +200,7 @@ export default function AdminDashboardPage() {
         )}
       </div>
 
-      {/* GRAFIK & PRODUK TERLARIS */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-        
-        {/* ✅ GRAFIK HANYA TAMPIL UNTUK SUPERADMIN */}
         {isSuperAdmin ? (
           <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm p-6 md:p-8 flex flex-col min-h-87.5">
             <div className="flex items-center justify-between mb-8">
@@ -226,7 +209,7 @@ export default function AdminDashboardPage() {
               </h3>
             </div>
             
-            {isLoading || !dashboardStats ? (
+            {(isLoading && !data) || !dashboardStats ? (
               <div className="flex-1 flex items-end gap-4 h-64 mt-auto border-b border-slate-100 dark:border-slate-800 pb-2">
                  {SKELETON_HEIGHTS.map((height, i) => (
                    <div key={i} className="flex-1 bg-slate-100 dark:bg-slate-800 animate-pulse rounded-t-md" style={{ height: `${height}%` }}></div>
@@ -250,7 +233,6 @@ export default function AdminDashboardPage() {
             )}
           </div>
         ) : (
-          /* TAMPILAN LOCK UNTUK ADMIN STAFF */
           <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm p-6 md:p-8 flex flex-col items-center justify-center min-h-87.5 text-center">
             <Lock className="w-12 h-12 text-slate-300 dark:text-slate-700 mb-4" />
             <h3 className="text-lg font-bold text-foreground mb-1">Grafik Finansial Dikunci</h3>
@@ -258,13 +240,12 @@ export default function AdminDashboardPage() {
           </div>
         )}
 
-        {/* PRODUK TERLARIS */}
         <div className="lg:col-span-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm p-6 md:p-8 flex flex-col">
           <h3 className="text-lg font-bold text-foreground mb-6 flex items-center gap-2">
             <Award className="w-5 h-5 text-amber-500" /> Produk Terlaris
           </h3>
           
-          {isLoading || !dashboardStats ? (
+          {(isLoading && !data) || !dashboardStats ? (
              <div className="space-y-4">
                {[...Array(4)].map((_, i) => (
                  <div key={i} className="flex items-center gap-4">
@@ -297,7 +278,6 @@ export default function AdminDashboardPage() {
                   </div>
                   <div className="text-right shrink-0">
                     <p className="font-black text-blue-600 dark:text-blue-400 text-sm">{prod.soldQty} Terjual</p>
-                    {/* Sembunyikan revenue produk spesifik untuk admin staff jika diinginkan, atau biarkan tampil */}
                     {isSuperAdmin && (
                       <p className="text-[10px] font-bold text-slate-400 mt-0.5">{formatRupiah(prod.revenue)}</p>
                     )}
@@ -309,7 +289,6 @@ export default function AdminDashboardPage() {
         </div>
       </div>
 
-      {/* PESANAN TERBARU & RESTOCK ALERT */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm overflow-hidden flex flex-col">
           <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
@@ -326,7 +305,7 @@ export default function AdminDashboardPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {isLoading ? (
+                {(isLoading && !data) ? (
                    [...Array(3)].map((_, i) => (
                     <tr key={i}>
                       <td className="px-6 py-5"><div className="h-4 bg-slate-100 dark:bg-slate-800 rounded animate-pulse w-24 mb-2"></div><div className="h-2 bg-slate-100 dark:bg-slate-800 rounded animate-pulse w-16"></div></td>
@@ -362,7 +341,7 @@ export default function AdminDashboardPage() {
           <p className="text-slate-500 dark:text-slate-400 text-xs mb-6">Produk yang mendesak untuk diproduksi ulang.</p>
           
           <div className="space-y-4 flex-1">
-            {isLoading || !dashboardStats ? (
+            {(isLoading && !data) || !dashboardStats ? (
                [...Array(3)].map((_, i) => (
                 <div key={i} className="flex items-center gap-3 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
                   <div className="w-10 h-10 rounded-xl bg-slate-200 dark:bg-slate-700 animate-pulse shrink-0"></div>

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from 'next/link';
 import { Mail, KeyRound, ArrowRight, ShieldCheck, ArrowLeft } from 'lucide-react';
 import { useAuthStore } from '../../../store/authStore';
@@ -9,7 +9,12 @@ import { useToastStore } from '../../../store/toastStore';
 import { supabase } from '../../../lib/supabase'; 
 
 export default function LoginPage() {
+  const searchParams = useSearchParams();
   const router = useRouter();
+  
+  // ✅ 1. Tangkap URL tujuan jika ada, jika tidak default ke "/"
+  const redirectUrl = searchParams.get("redirect") || "/";
+  
   const { login, user, checkAuth, isInitialized } = useAuthStore();
   const addToast = useToastStore((state) => state.addToast);
 
@@ -20,11 +25,16 @@ export default function LoginPage() {
     checkAuth();
   }, [checkAuth]);
 
+  // ✅ 2. Perbaiki logika saat user yang sudah login mencoba masuk ke halaman ini
   useEffect(() => {
     if (isInitialized && user) {
-      router.replace(user.role === 'admin' ? '/admin' : '/');
+      const isAdmin = ['superadmin', 'admin_staff', 'admin'].includes(user.role?.toLowerCase());
+      const defaultPath = isAdmin ? '/admin' : '/';
+      
+      // Jika ada redirectUrl (misal dari halaman produk), prioritaskan itu. Jika tidak, gunakan defaultPath.
+      router.replace(redirectUrl !== "/" ? redirectUrl : defaultPath);
     }
-  }, [user, isInitialized, router]);
+  }, [user, isInitialized, router, redirectUrl]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -53,7 +63,7 @@ export default function LoginPage() {
 
       if (authError) throw authError;
 
-      // 2. Tarik data profil secara langsung untuk mencegah tabrakan lock token dengan AuthListener
+      // 2. Tarik data profil
       const { data: profileData, error: profileError } = await supabase
         .from('users')
         .select('*')
@@ -64,26 +74,27 @@ export default function LoginPage() {
         throw new Error("Profil pengguna tidak ditemukan di database.");
       }
 
-      // 3. Masukkan data profil langsung ke Zustand store
+      // 3. Masukkan data profil ke Zustand
       await login(profileData);
 
-      // 4. Normalisasi deteksi tingkat hak akses
+      // 4. Deteksi Role
       const userRole = profileData.role?.toLowerCase() || 'customer';
       const userName = profileData.name || cleanEmail.split('@')[0];
-      const isAdminLevel = userRole === 'superadmin' || userRole === 'admin_staff' || userRole === 'admin';
+      const isAdminLevel = ['superadmin', 'admin_staff', 'admin'].includes(userRole);
 
       addToast(isAdminLevel ? `Autentikasi ${userRole.replace('_', ' ')} berhasil.` : `Selamat datang kembali, ${userName}!`, 'success');
       
-      // 5. Pembagian rute halaman tujuan tujuan tanpa memicu interupsi memori
-      if (isAdminLevel) {
-        router.replace('/admin');
-      } else {
-        // Ambil fungsi sinkronisasi massal yang sudah kita optimalkan di Langkah 1
+      // ✅ 5. Tentukan Rute Tujuan yang Benar
+      const targetPath = redirectUrl !== "/" ? redirectUrl : (isAdminLevel ? '/admin' : '/');
+
+      if (!isAdminLevel) {
+        // Sinkronisasi keranjang HANYA untuk pelanggan
         const { syncCartFromDB } = useCartStore.getState();
         await syncCartFromDB(authData.user.id);
-        
-        router.push('/');
       }
+      
+      // Arahkan ke URL tujuan yang sudah dikalkulasi
+      router.replace(targetPath);
 
     } catch (error) {
       console.error("Login Error:", error);
@@ -102,17 +113,14 @@ export default function LoginPage() {
   }
 
   return (
-    // Menggunakan pt-28 agar sejajar dengan layout Register dan aman dari navbar
     <main className="min-h-screen bg-background flex flex-col items-center justify-center px-4 pt-28 pb-12 relative">
       
-      {/* Posisi tombol kembali disesuaikan agar rapi di atas card */}
       <div className="w-full max-w-md lg:max-w-4xl mb-4 z-10">
         <Link href="/" className="inline-flex items-center gap-2 text-sm font-bold text-foreground/50 hover:text-foreground transition-colors">
           <ArrowLeft className="w-4 h-4" /> Kembali ke Toko
         </Link>
       </div>
 
-      {/* Melebar di desktop (lg:max-w-4xl) */}
       <div className="w-full max-w-md lg:max-w-4xl bg-white dark:bg-slate-800/50 rounded-3xl shadow-xl overflow-hidden border border-slate-200 dark:border-slate-800 p-8 lg:p-12 animate-in zoom-in-95 duration-500 relative">
         
         <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl -translate-y-10 translate-x-10 pointer-events-none"></div>
@@ -123,10 +131,8 @@ export default function LoginPage() {
         </div>
         
         <form onSubmit={handleLogin} className="relative z-10">
-          {/* Layout dua kolom di layar besar */}
           <div className="flex flex-col lg:flex-row lg:gap-12">
             
-            {/* KOLOM KIRI: Input Form */}
             <div className="flex-1 space-y-5">
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-foreground/60 uppercase tracking-widest px-1">Alamat Email</label>
@@ -155,7 +161,6 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* KOLOM KANAN: Action Buttons & Info */}
             <div className="flex-1 flex flex-col justify-center mt-8 lg:mt-0 lg:border-l lg:border-slate-100 dark:lg:border-slate-800 lg:pl-12">
               <button type="submit" disabled={isProcessing} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-blue-600/20 active:scale-95 disabled:opacity-70 flex justify-center items-center gap-2">
                 {isProcessing ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <>Masuk Sekarang <ArrowRight className="w-4 h-4" /></>}
@@ -164,7 +169,8 @@ export default function LoginPage() {
               <div className="mt-8 text-center relative z-10">
                 <p className="text-sm text-foreground/60">
                   Belum punya akun?{' '}
-                  <Link href="/auth/register" className="text-blue-600 font-bold hover:underline">
+                  {/* ✅ 6. Tambahkan parameter redirect ke link register juga jika user memutuskan untuk mendaftar */}
+                  <Link href={`/auth/register?redirect=${encodeURIComponent(redirectUrl)}`} className="text-blue-600 font-bold hover:underline">
                     Daftar di sini
                   </Link>
                 </p>

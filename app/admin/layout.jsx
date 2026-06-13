@@ -45,8 +45,10 @@ export default function AdminLayout({ children }) {
   // Fungsi jika user memaksa ingin keluar dari halaman admin ke beranda
   const handleForceLeave = () => {
     setShowExitWarning(false);
-    // ✅ GUNAKAN ROUTER PUSH: Jauh lebih stabil daripada window.history
-    router.push("/");
+    
+    // ✅ Aktifkan Kunci Rahasia sebelum pindah halaman!
+    window.__ALLOW_LEAVE__ = true; 
+    window.location.href = "/";
   };
 
   // ✅ Tampilkan SKELETON SHELL selama data belum utuh, jangan buru-buru menendang user
