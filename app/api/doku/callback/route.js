@@ -2,18 +2,28 @@ import crypto from 'crypto';
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// 🔥 UPDATE: WAJIB Menggunakan SERVICE ROLE KEY untuk bypass RLS
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY; // Pastikan KEY ini ada di .env Anda!
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
-  }
-});
+// ✅ WAJIB ADA: Mencegah Next.js mengevaluasi file ini secara statis saat proses build (npm run build)
+export const dynamic = 'force-dynamic';
 
 export async function POST(req) {
+  // 🔥 INISIALISASI DIPINDAH KE DALAM SINI: 
+  // Vercel tidak akan membaca ini saat proses build, hanya saat API benar-benar dipanggil
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  // Proteksi ganda jika environment belum siap saat runtime
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.error("CRITICAL ERROR: Supabase URL atau Service Key tidak ditemukan di environment variables!");
+    return NextResponse.json({ error: "Konfigurasi server tidak lengkap" }, { status: 500 });
+  }
+
+  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  });
+
   try {
     const rawBody = await req.text(); 
     const body = JSON.parse(rawBody); 
@@ -25,7 +35,7 @@ export async function POST(req) {
 
     const secretKey = process.env.DOKU_SECRET_KEY;
     if (!secretKey) {
-      return NextResponse.json({ error: "Secret Key tidak dikonfigurasi" }, { status: 500 });
+      return NextResponse.json({ error: "Secret Key DOKU tidak dikonfigurasi" }, { status: 500 });
     }
 
     // --- VALIDASI SIGNATURE ---
@@ -60,7 +70,6 @@ export async function POST(req) {
 
     // --- UPDATE STATUS KE SUPABASE ---
     if (paymentStatus === 'SUCCESS') {
-        // 🔥 UPDATE: Gunakan supabaseAdmin dan huruf kecil 'paid'
         const { data, error } = await supabaseAdmin
             .from('orders')
             .update({ status: 'paid' }) 
@@ -78,7 +87,6 @@ export async function POST(req) {
         // --- PENGIRIMAN EMAIL OTOMATIS ---
         if (data && data.customer_email) {
           try {
-            // 🔥 UPDATE: Gunakan VERCEL_URL jika ada, jika tidak fallback ke localhost
             const baseUrl = process.env.VERCEL_URL 
               ? `https://${process.env.VERCEL_URL}` 
               : 'http://localhost:3000';
