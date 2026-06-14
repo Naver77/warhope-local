@@ -162,21 +162,25 @@ export default function ProfilePage() {
     if (confirmModal.type === "logout") {
       setIsProcessingAction(true);
       try {
-        // ✅ 1. Hapus sesi dari Supabase
-        await supabase.auth.signOut();
-        
-        // ✅ 2. Bersihkan state global tanpa merusak aplikasi
+        // ✅ 1. Bersihkan state global secara instan (0 detik)
         logout();
         clearCart();
         clearWishlist();
         
-        // ✅ 3. Beri notifikasi dan redirect dengan mulus
+        // ✅ 2. Beri notifikasi, tutup modal, dan redirect secepat kilat
         addToast("Anda berhasil keluar.", "success");
         setConfirmModal({ ...confirmModal, isOpen: false });
+        
         router.replace("/auth/login"); 
+        router.refresh(); // Paksa Next.js membuang cache halaman profil
+        
+        // ✅ 3. FIRE-AND-FORGET: Hapus sesi dari Supabase di latar belakang
+        // PERHATIKAN: Tidak ada kata 'await' di sini agar UI tidak memblokir!
+        supabase.auth.signOut().catch((err) => console.error("Logout background error:", err));
+
       } catch (error) {
         console.error("Error saat logout:", error);
-        router.replace("/auth/login"); // Tetap paksa redirect jika ada error sesi
+        router.replace("/auth/login"); 
       } finally {
         setIsProcessingAction(false);
       }

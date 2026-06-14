@@ -28,13 +28,14 @@ function LoginContent() {
   }, [checkAuth]);
 
   useEffect(() => {
-    if (isInitialized && user) {
+    // Tambahkan !isProcessing di dalam if, dan isProcessing di dalam array dependency (paling bawah)
+    if (isInitialized && user && !isProcessing) {
       const isAdmin = ['superadmin', 'admin_staff', 'admin'].includes(user.role?.toLowerCase());
       const defaultPath = isAdmin ? '/admin' : '/';
       
       router.replace(redirectUrl !== "/" ? redirectUrl : defaultPath);
     }
-  }, [user, isInitialized, router, redirectUrl]);
+  }, [user, isInitialized, router, redirectUrl, isProcessing]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -89,6 +90,7 @@ function LoginContent() {
       }
       
       router.replace(targetPath);
+      router.refresh();
 
     } catch (error) {
       console.error("Login Error:", error);

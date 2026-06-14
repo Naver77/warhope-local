@@ -104,8 +104,9 @@ export default function OrderHistoryTab({
                 </div>
 
                 <div className="space-y-4">
-                  {items.map((item, idx) => (
-                    <div key={idx} className="flex items-center gap-4 bg-slate-50/50 dark:bg-slate-800/20 p-3 rounded-2xl border border-transparent dark:border-slate-800/50">
+                    {/* Tambahkan fallback (items || []) agar aman dari nilai null */}
+                    {(items || []).map((item, idx) => (
+                      <div key={idx} className="flex items-center gap-4 bg-slate-50/50 dark:bg-slate-800/50 p-3 rounded-2xl">
                       <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-xl overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={item.image} alt={item.name} className="w-full h-full object-cover" />

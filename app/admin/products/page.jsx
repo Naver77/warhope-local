@@ -138,7 +138,7 @@ export default function AdminProductsPage() {
     setIsProcessing(true);
     try {
       await deleteProduct(deleteModal.id);
-      addToast(`Produk dihapus!`, 'success');
+      addToast(`Produk berhasil dihapus!`, 'success');
       
       mutate(
         { ...data, products: products.filter(p => p.id !== deleteModal.id) }, 
@@ -149,8 +149,9 @@ export default function AdminProductsPage() {
       setDeleteModal({ isOpen: false, id: null, name: '' });
       syncStorefront();
     } catch (error) {
-      console.error(error);
-      addToast('Gagal menghapus produk.', 'error');
+      console.error("Error UI Delete:", error);
+      // ✅ PERBAIKAN: Gunakan pesan error dinamis dari lemparan lib/api.js Anda
+      addToast(error.message || 'Gagal menghapus produk.', 'error');
     } finally {
       setIsProcessing(false);
     }
