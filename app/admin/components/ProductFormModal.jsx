@@ -20,10 +20,9 @@ export default function ProductFormModal({ isOpen, onClose, mode, initialProduct
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [processStep, setProcessStep] = useState(''); 
-  const [isFetchingDetail, setIsFetchingDetail] = useState(false); // ✅ State loading saat menarik data lengkap
   const [discardModalOpen, setDiscardModalOpen] = useState(false);
   
-  const isProcessing = processStep !== '' || isFetchingDetail;
+  const isProcessing = processStep !== '';
 
   useEffect(() => {
     setProcessStep(''); 
@@ -49,23 +48,7 @@ export default function ProductFormModal({ isOpen, onClose, mode, initialProduct
       targetData.sizes = { ...dynamicBaseSizes };
       
       if (mode === 'edit' && initialProduct?.id) {
-        setIsFetchingDetail(true);
         let dbProduct = { ...initialProduct };
-
-        // ✅ 2. TEMBAK DATABASE SECARA MANDIRI: Memastikan "description" dan "sizes" 100% utuh ditarik
-        try {
-          const { data, error } = await supabase
-            .from('products')
-            .select('*')
-            .eq('id', initialProduct.id)
-            .single();
-
-          if (data && !error) dbProduct = data;
-        } catch (e) {
-          console.error("Gagal menarik data lengkap:", e);
-        } finally {
-          setIsFetchingDetail(false);
-        }
 
         let productSizes = dbProduct.sizes;
 
@@ -73,10 +56,8 @@ export default function ProductFormModal({ isOpen, onClose, mode, initialProduct
           try { productSizes = JSON.parse(productSizes); } catch {}
         }
 
-        // ✅ 3. GABUNGKAN DATA STOK DENGAN KOTAK UKURAN (Toleransi huruf besar/kecil)
         if (typeof productSizes === 'object' && productSizes !== null && !Array.isArray(productSizes)) {
            Object.keys(productSizes).forEach(key => {
-             // Cari ukuran yang cocok agar tidak sensitif case (misal 's' akan masuk ke 'S')
              const matchedKey = safeMasterSizes.find(s => s.toLowerCase() === key.toLowerCase());
              if (matchedKey) {
                dynamicBaseSizes[matchedKey] = {
@@ -286,14 +267,6 @@ export default function ProductFormModal({ isOpen, onClose, mode, initialProduct
   return (
     <div className="fixed inset-0 z-140 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
       <div className="bg-white dark:bg-slate-800 w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] relative">
-        
-        {/* LAYAR LOADING INTERNAL (Tampil saat menarik data deskripsi & sizes dari DB) */}
-        {isFetchingDetail && (
-          <div className="absolute inset-0 z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm flex flex-col items-center justify-center">
-            <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
-            <p className="font-bold text-slate-700 dark:text-slate-300">Menarik data lengkap dari server...</p>
-          </div>
-        )}
 
         {/* Header Modal */}
         <div className="relative z-20 flex justify-between items-center p-6 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shrink-0 shadow-sm">
